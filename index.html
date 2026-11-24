@@ -445,6 +445,35 @@ iframe.video-frame { width:100%; height:100%; min-height:500px; border:none; }
 .chat-input-row { display:flex; gap:8px; padding:10px 12px; border-top:1px solid var(--border); }
 .chat-input-row input { flex:1; padding:9px 12px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px; }
 .obs-banner { background:linear-gradient(135deg,#eaf3fb,#f6faff); border:2px solid var(--info); border-radius:var(--radius-lg); padding:18px 22px; margin-bottom:18px; display:flex; gap:14px; align-items:center; }
+/* ── Sala (profesor y alumno): misma estructura ── */
+.sala-bar { display:flex; align-items:center; gap:22px; flex-wrap:wrap; background:linear-gradient(135deg,var(--green-900),var(--green-700)); color:#fff; border-radius:var(--radius); padding:12px 20px; margin-bottom:14px; }
+.sala-bar .sb-item { display:flex; flex-direction:column; gap:1px; }
+.sala-bar .sb-lbl { font-size:10px; letter-spacing:1px; text-transform:uppercase; color:rgba(255,255,255,.55); font-weight:600; }
+.sala-bar .sb-val { font-family:'DM Mono',monospace; font-size:20px; color:var(--green-100); letter-spacing:1px; }
+.sala-layout { display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:16px; align-items:start; margin-bottom:16px; }
+.sala-main { min-width:0; }
+.sala-side { background:var(--card-bg); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); display:flex; flex-direction:column; height:640px; overflow:hidden; }
+.sala-tabs { display:flex; border-bottom:1px solid var(--border); background:#fafcfb; flex-shrink:0; }
+.sala-tab { flex:1; padding:12px 6px; font-size:12.5px; font-weight:600; color:var(--text-mid); background:none; border:none; border-bottom:2px solid transparent; cursor:pointer; font-family:inherit; }
+.sala-tab.active { color:var(--green-900); border-bottom-color:var(--primary); background:#fff; }
+.sala-pane { display:none; flex:1; min-height:0; overflow-y:auto; }
+.sala-pane.active { display:flex; flex-direction:column; }
+.sala-pane .pane-pad { padding:14px; }
+.sala-side .chat-panel-header { display:none; }
+.sala-side .chat-panel { border:none; box-shadow:none; border-radius:0; height:100%; margin:0; flex:1; min-height:0; }
+.chat-sys { text-align:center; font-size:11.5px; color:var(--text-light); padding:4px 0; }
+.lista-banner { display:flex; align-items:center; gap:14px; background:linear-gradient(135deg,#fff7e6,#fffdf5); border:2px solid var(--warning); border-radius:var(--radius-lg); padding:14px 18px; margin-bottom:14px; animation:listaPulse 2s ease-in-out infinite; }
+.lista-banner.ok { background:linear-gradient(135deg,#eafaf0,#f6fdf9); border-color:var(--success); animation:none; }
+.lista-banner .lb-ic { font-size:32px; }
+.lista-banner .lb-tx { flex:1; display:flex; flex-direction:column; gap:2px; font-size:13px; color:var(--text-mid); line-height:1.5; }
+.lista-banner .lb-tx strong { font-size:15px; color:var(--green-900); }
+@keyframes listaPulse { 0%,100% { box-shadow:0 0 0 0 rgba(230,126,34,.35); } 50% { box-shadow:0 0 0 8px rgba(230,126,34,0); } }
+.lista-panel { background:var(--card-bg); border:1px solid var(--border); border-left:4px solid var(--warning); border-radius:var(--radius); padding:12px 16px; margin-top:12px; box-shadow:var(--shadow); }
+.lista-panel.cerrada { border-left-color:var(--success); }
+.lista-panel .lp-top { display:flex; align-items:center; gap:12px; flex-wrap:wrap; font-size:13.5px; color:var(--green-900); }
+.lista-panel .lp-top strong { font-size:14.5px; }
+.lista-chip { display:inline-block; background:var(--green-50); border:1px solid var(--border); color:var(--green-900); border-radius:99px; padding:3px 10px; font-size:11.5px; margin:3px 4px 0 0; }
+@media (max-width:1000px){ .sala-layout { grid-template-columns:1fr; } .sala-side { height:520px; } .sala-bar { gap:14px; } }
 @media (max-width:768px){ .jitsi-host, .jitsi-host iframe { min-height:0; } .video-room { min-height:0; aspect-ratio:16/9; height:auto; } }
 </style>
 </head>
@@ -585,7 +614,13 @@ auth.onAuthStateChanged(async (user) => {
     currentUser = user;
     try {
       const doc = await db.collection('users').doc(user.uid).get();
-      currentRole = doc.exists ? (doc.data().role || 'student') : 'student';
+      if (!doc.exists) {
+        await auth.signOut();
+        showAuth();
+        showAuthAlert('Tu cuenta no está habilitada en este portal. Contacta al administrador.');
+        return;
+      }
+      currentRole = doc.data().role || 'student';
     } catch(e) { currentRole = 'student'; }
     showDashboard();
   } else {
@@ -601,7 +636,11 @@ function showDashboard() {
   document.getElementById('authSection').classList.add('hidden');
   document.getElementById('dashboardSection').classList.remove('hidden');
   updateSidebar();
-  renderMain();
+  // F5: volver a la misma pantalla donde estabas (guardada solo en esta pestaña)
+  let _nav = null;
+  try { const r = JSON.parse(sessionStorage.getItem('inasep_online_nav') || 'null'); if (r && currentUser && r.uid === currentUser.uid && r.view && true) _nav = r; } catch (e) {}
+  renderMain(_nav ? _nav.view : undefined, _nav ? _nav.params : {});
+  if (_nav) { const el = document.getElementById('nav-' + String(_nav.view).split('/')[0]); if (el) el.classList.add('active'); }
 }
 
 function formatRutInput(input) {
@@ -670,8 +709,30 @@ function _vigilarSesionUnica(classId, sesionId) {
   } catch (e) { /* sin vigilancia: el Worker igual registra al último dispositivo */ }
 }
 
-/* Pide el token al Worker (rol, profesor asignado y estado del bloque se validan en el servidor) y abre la sala */
-async function montarVideoJitsi(hostId, classId) {
+/* Pide el token al Worker (rol, profesor asignado y estado del bloque se validan en el servidor) y abre la sala.
+   Alumno: entra con cámara y micrófono apagados, ve al profesor fijado en grande y la cámara solo se habilita cuando el profesor pasa lista.
+   Profesor: se ve a sí mismo, con cámara y micrófono listos. */
+let _salaState = { local: null, pinned: false, tile: false, teacher: '', timer: null };
+const _norm = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+function _fijar(id) { try { if (_jitsiApi && id) _jitsiApi.executeCommand('pinParticipant', id); } catch (e) {} }
+function _fijarYo() { _fijar(_salaState.local); }
+function _buscarDocente() {
+  try {
+    if (!_salaState.teacher) return;
+    const p = (_jitsiApi.getParticipantsInfo() || []).find(x => x.participantId !== _salaState.local && _norm(x.displayName) === _salaState.teacher);
+    if (p) { _salaState.pinned = true; _fijar(p.participantId); }
+  } catch (e) {}
+}
+function _contarSala() {
+  try { const n = _jitsiApi.getNumberOfParticipants(); const el = document.getElementById('salaCount'); if (el) el.textContent = n; } catch (e) {}
+  if (typeof _renderListaDocente === 'function') _renderListaDocente();
+}
+function _alCambiarVideo(muted) {
+  if (currentRole !== 'student' || muted) return;
+  if (_listaActiva) _confirmarLista();
+  else { try { _jitsiApi.executeCommand('toggleVideo'); } catch (e) {} }   // fuera de la lista la cámara del alumno permanece apagada
+}
+async function montarVideoJitsi(hostId, classId, opts = {}) {
   const host = document.getElementById(hostId); if (!host) return;
   const msg = (icono, txt) => {
     _detenerVigilanciaSesion();
@@ -686,19 +747,49 @@ async function montarVideoJitsi(hostId, classId) {
     await cargarJitsiApi(j.domain);
     if (!document.getElementById(hostId)) return;
     if (_jitsiApi) { try { _jitsiApi.dispose(); } catch (e) {} _jitsiApi = null; }
+    if (_salaState.timer) { clearInterval(_salaState.timer); _salaState.timer = null; }
     host.innerHTML = '';
     _vigilarSesionUnica(classId, j.sesionId);
-    const cfg = { prejoinConfig: { enabled: false }, disableDeepLinking: true };
-    if (j.observador) { cfg.startWithAudioMuted = true; cfg.startWithVideoMuted = true; }
-    else if (!j.moderator) cfg.startWithAudioMuted = true;
-    _jitsiApi = new JitsiMeetExternalAPI(j.domain, {
+
+    const esDocente = !!j.moderator, obs = !!j.observador;
+    const cfg = { prejoinConfig: { enabled: false }, disableDeepLinking: true, disableInviteFunctions: true, subject: opts.titulo || 'Clase en vivo' };
+    if (obs) {
+      Object.assign(cfg, { startWithAudioMuted: true, startWithVideoMuted: true, toolbarButtons: ['fullscreen', 'tileview', 'settings'] });
+    } else if (esDocente) {
+      Object.assign(cfg, { startWithAudioMuted: false, startWithVideoMuted: false,
+        toolbarButtons: ['microphone', 'camera', 'desktop', 'tileview', 'raisehand', 'participants-pane', 'mute-everyone', 'mute-video-everyone', 'select-background', 'fullscreen', 'settings'] });
+    } else {
+      Object.assign(cfg, { startWithAudioMuted: true, startWithVideoMuted: true, disableShortcuts: true, filmstrip: { disabled: true }, channelLastN: 4,
+        toolbarButtons: ['microphone', 'raisehand', 'fullscreen', 'settings'] });
+    }
+    _salaState = { local: null, pinned: false, tile: false, teacher: _norm(opts.teacherName), timer: null };
+    const api = new JitsiMeetExternalAPI(j.domain, {
       roomName: j.room, jwt: j.jwt, parentNode: host, width: '100%', height: '100%',
       userInfo: { displayName: currentUser.displayName || '' }, configOverwrite: cfg
     });
+    _jitsiApi = api;
+    api.addListener('videoConferenceJoined', (e) => {
+      _salaState.local = e.id; _contarSala();
+      if (esDocente) setTimeout(_fijarYo, 800); else if (!obs) _buscarDocente();
+    });
+    api.addListener('participantJoined', (e) => {
+      _contarSala();
+      if (!esDocente && !obs && !_salaState.pinned && _salaState.teacher && _norm(e.displayName) === _salaState.teacher) { _salaState.pinned = true; _fijar(e.id); }
+    });
+    api.addListener('participantLeft', _contarSala);
+    api.addListener('participantRoleChanged', (e) => {
+      if (!esDocente && !obs && !_salaState.pinned && e.role === 'moderator' && e.id !== _salaState.local) { _salaState.pinned = true; _fijar(e.id); }
+    });
+    api.addListener('tileViewChanged', (e) => { _salaState.tile = !!e.enabled; });
+    api.addListener('videoMuteStatusChanged', (e) => _alCambiarVideo(e.muted));
+    if (!esDocente && !obs) {
+      _salaState.timer = setInterval(() => { if (_jitsiApi !== api) { clearInterval(_salaState.timer); return; } if (!_salaState.pinned) _buscarDocente(); }, 10000);
+    }
     marcarPresenteUI(j);
     if (!j.observador) startHeartbeat(classId);
   } catch (e) { msg('⚠️', e.message); }
 }
+
 function marcarPresenteUI(j) {
   if (j && j.observador) return;
   const box = document.getElementById('attCheckBox'); if (!box) return;
@@ -713,7 +804,8 @@ async function reingresarSala(classId) {
   try {
     const d = await db.collection('liveClasses').doc(classId).get();
     if (!d.exists) return toast('Clase no encontrada', 'error');
-    montarVideoJitsi('jitsiHost', classId);
+    const c = d.data();
+    montarVideoJitsi('jitsiHost', classId, { teacherName: c.teacherName || c.profesorNombre, titulo: c.title });
   } catch (e) { toast(e.message, 'error'); }
 }
 
@@ -790,17 +882,20 @@ function initClassChat(classId, puedeEscribir = true) {
   const cont = document.getElementById('classChatMessages');
   if (!cont) return;
   _chatListener = db.collection('liveClasses').doc(classId).collection('chat')
-    .orderBy('createdAt', 'asc').limitToLast(30)
+    .orderBy('createdAt', 'asc').limitToLast(60)
     .onSnapshot(snap => {
       const c2 = document.getElementById('classChatMessages'); if (!c2) return;
-      if (snap.empty) { c2.innerHTML = '<div class="empty-state" style="padding:20px"><p style="font-size:12.5px">Aún no hay mensajes.' + (puedeEscribir ? ' ¡Sé el primero en escribir!' : '') + '</p></div>'; return; }
-      c2.innerHTML = snap.docs.map(d => {
-        const m = d.data(); const mine = m.uid === currentUser?.uid;
+      const docs = snap.docs.map(d => d.data()).filter(m => m.tipo !== 'lista-ok');
+      if (!docs.length) { c2.innerHTML = '<div class="empty-state" style="padding:20px"><p style="font-size:12.5px">Aún no hay mensajes.' + (puedeEscribir ? ' ¡Sé el primero en escribir!' : '') + '</p></div>'; return; }
+      c2.innerHTML = docs.map(m => {
+        if (m.tipo === 'lista') return `<div class="chat-sys">${m.accion === 'abrir' ? '📸 Se inició la lista por cámara' : '✅ Lista por cámara terminada'}</div>`;
+        const mine = m.uid === currentUser?.uid;
         return `<div class="chat-bubble ${mine?'mine':''}"><span class="cb-author">${escHtml(m.authorName||'Usuario')}${m.role==='admin'?' · Admin':m.role==='teacher'?' · Profesor':''}</span>${escHtml(m.text||'')}<span class="cb-time">${m.createdAt ? fmtDateTime(m.createdAt) : 'enviando...'}</span></div>`;
       }).join('');
       c2.scrollTop = c2.scrollHeight;
     }, e => { const c2 = document.getElementById('classChatMessages'); if (c2) c2.innerHTML = `<p style="color:var(--danger);padding:12px;font-size:12.5px">${escHtml(e.message)}</p>`; });
 }
+
 async function sendClassChat(classId) {
   const input = document.getElementById('classChatInput');
   const text = input.value.trim();
@@ -819,6 +914,151 @@ function htmlChat(classId, puedeEscribir) {
     <div class="chat-messages" id="classChatMessages"><div class="empty-state" style="padding:20px"><p style="font-size:12.5px">Cargando chat...</p></div></div>
     ${puedeEscribir ? `<div class="chat-input-row"><input type="text" id="classChatInput" placeholder="Escribe tu pregunta o comentario..." onkeydown="if(event.key==='Enter')sendClassChat('${classId}')"><button class="btn btn-primary btn-sm" onclick="sendClassChat('${classId}')">Enviar</button></div>` : '<div style="padding:10px 14px;border-top:1px solid var(--border);font-size:12px;color:var(--text-light)">Modo observador: solo lectura.</div>'}
   </div>`;
+}
+
+/* ════════════════════════════════════════════════
+   LISTA POR CÁMARA
+   Los alumnos entran con la cámara apagada. Cuando el profesor "pasa lista", a los alumnos se les pide encender la cámara
+   (un clic) y al terminar se apaga sola. Cada confirmación queda como mensaje inmutable en la subcolección chat de la clase
+   (las reglas no permiten editar ni borrar) y solo se acepta la orden si la envió un profesor o administrador.
+════════════════════════════════════════════════ */
+let _listaActiva = null;                  // alumno: { id, confirmado }
+let _listaClassId = null, _listaListener = null, _okListener = null, _listaTimer = null, _listaTick = null;
+let _listaDocente = null;                 // profesor: { id, desde, cerrada }
+let _okNombres = {}, _rolCache = {};
+const LISTA_MAX_MS = 3 * 60 * 1000, LISTA_VIGENTE_MS = 4 * 60 * 1000;
+const _msDoc = (m) => (m && m.createdAt && m.createdAt.toMillis) ? m.createdAt.toMillis() : Date.now();
+
+function _limpiarLista() {
+  if (_listaListener) { _listaListener(); _listaListener = null; }
+  if (_okListener) { _okListener(); _okListener = null; }
+  if (_listaTimer) { clearTimeout(_listaTimer); _listaTimer = null; }
+  if (_listaTick) { clearInterval(_listaTick); _listaTick = null; }
+  _listaActiva = null; _listaDocente = null; _okNombres = {}; _listaClassId = null;
+}
+async function _esDocenteUid(uid) {
+  if (!uid) return false;
+  if (_rolCache[uid] === undefined) {
+    try { const u = await db.collection('users').doc(uid).get(); _rolCache[uid] = u.exists ? u.data().role : ''; } catch (e) { return false; }
+  }
+  return _rolCache[uid] === 'teacher' || _rolCache[uid] === 'admin';
+}
+function escucharLista(classId) {
+  _limpiarLista();
+  if (currentRole === 'fiscalizador') return;
+  _listaClassId = classId;
+  const col = db.collection('liveClasses').doc(classId).collection('chat');
+  _listaListener = col.where('tipo', '==', 'lista').onSnapshot(async snap => {
+    const evs = snap.docs.map(d => d.data()).sort((a, b) => _msDoc(a) - _msDoc(b));
+    let ev = null;
+    for (let i = evs.length - 1; i >= 0; i--) { if (await _esDocenteUid(evs[i].uid)) { ev = evs[i]; break; } }   // una orden falsa de un alumno se ignora
+    if (!ev) return;
+    const abierta = ev.accion === 'abrir' && (Date.now() - _msDoc(ev)) < LISTA_VIGENTE_MS;
+    if (currentRole === 'student') abierta ? _abrirListaAlumno(ev) : _cerrarListaAlumno();
+    else _estadoListaDocente(ev, abierta);
+  }, () => {});
+  if (currentRole !== 'student') {
+    _okListener = col.where('tipo', '==', 'lista-ok').onSnapshot(snap => {
+      _okNombres = {};
+      snap.docs.forEach(d => { const m = d.data(); (_okNombres[m.listaId] = _okNombres[m.listaId] || {})[m.uid] = m.authorName || 'Alumno'; });
+      _renderListaDocente();
+    }, () => {});
+  }
+}
+
+/* ── Alumno ── */
+function _bannerLista(ok) {
+  const b = document.getElementById('listaBanner'); if (!b) return;
+  b.innerHTML = ok
+    ? `<div class="lista-banner ok"><div class="lb-ic">✅</div><div class="lb-tx"><strong>Presencia confirmada con cámara</strong><span>Gracias. Tu cámara se apagará sola cuando el profesor termine la lista.</span></div></div>`
+    : `<div class="lista-banner"><div class="lb-ic">📸</div><div class="lb-tx"><strong>El profesor está pasando lista</strong><span>Enciende tu cámara para confirmar que estás presente. Se apagará sola al terminar.</span></div><button class="btn btn-success" onclick="encenderCamaraLista()">📷 Encender cámara</button></div>`;
+}
+function _abrirListaAlumno(ev) {
+  if (_listaActiva && _listaActiva.id === ev.listaId) return;
+  _listaActiva = { id: ev.listaId, confirmado: false };
+  if (_listaTimer) clearTimeout(_listaTimer);
+  _listaTimer = setTimeout(_cerrarListaAlumno, Math.max(1000, LISTA_VIGENTE_MS - (Date.now() - _msDoc(ev))));
+  _bannerLista(false);
+  toast('📸 El profesor está pasando lista: enciende tu cámara.', 'warning', 9000);
+}
+async function encenderCamaraLista() {
+  if (!_jitsiApi) return toast('Aún no estás conectado a la sala.', 'warning');
+  try {
+    const muted = await _jitsiApi.isVideoMuted();
+    if (muted) _jitsiApi.executeCommand('toggleVideo'); else _confirmarLista();
+  } catch (e) { toast('No se pudo encender la cámara: ' + e.message, 'error'); }
+}
+function _confirmarLista() {
+  if (!_listaActiva || _listaActiva.confirmado || !_listaClassId) return;
+  _listaActiva.confirmado = true;
+  _bannerLista(true);
+  db.collection('liveClasses').doc(_listaClassId).collection('chat').add({
+    tipo: 'lista-ok', listaId: _listaActiva.id, text: '✅ Presencia confirmada con cámara',
+    uid: currentUser.uid, authorName: currentUser.displayName || currentUser.email, role: currentRole,
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+  }).catch(() => {});
+}
+function _cerrarListaAlumno() {
+  if (_listaTimer) { clearTimeout(_listaTimer); _listaTimer = null; }
+  if (!_listaActiva) return;
+  _listaActiva = null;
+  const b = document.getElementById('listaBanner'); if (b) b.innerHTML = '';
+  try { _jitsiApi.isVideoMuted().then(m => { if (!m) _jitsiApi.executeCommand('toggleVideo'); }); } catch (e) {}
+  toast('Lista terminada: tu cámara se apagó.', 'info', 5000);
+}
+
+/* ── Profesor ── */
+function _estadoListaDocente(ev, abierta) {
+  if (abierta) {
+    if (!_listaDocente || _listaDocente.id !== ev.listaId) _listaDocente = { id: ev.listaId, desde: _msDoc(ev), cerrada: false };
+    _listaDocente.cerrada = false;
+    if (!_listaTick) _listaTick = setInterval(() => {
+      if (!_listaDocente || _listaDocente.cerrada) { clearInterval(_listaTick); _listaTick = null; return; }
+      if (Date.now() - _listaDocente.desde >= LISTA_MAX_MS) { toggleLista(); return; }      // se cierra sola a los 3 min
+      _renderListaDocente();
+    }, 1000);
+  } else if (_listaDocente && _listaDocente.id === ev.listaId) {
+    _listaDocente.cerrada = true;
+  } else if (!_listaDocente) {
+    _listaDocente = { id: ev.listaId, desde: _msDoc(ev), cerrada: true };
+  }
+  _renderListaDocente();
+}
+function _renderListaDocente() {
+  const btn = document.getElementById('btnLista');
+  const abierta = !!(_listaDocente && !_listaDocente.cerrada);
+  if (btn) { btn.textContent = abierta ? '⏹ Terminar lista' : '📸 Pasar lista (cámaras)'; btn.className = 'btn btn-sm ' + (abierta ? 'btn-danger' : 'btn-primary'); }
+  const el = document.getElementById('listaPanel'); if (!el) return;
+  if (!_listaDocente) { el.innerHTML = ''; return; }
+  const nombres = Object.values(_okNombres[_listaDocente.id] || {});
+  let enSala = 0; try { enSala = Math.max(0, _jitsiApi.getNumberOfParticipants() - 1); } catch (e) {}
+  const chips = nombres.map(n => `<span class="lista-chip">${escHtml(n)}</span>`).join('');
+  if (abierta) {
+    const rest = Math.max(0, LISTA_MAX_MS - (Date.now() - _listaDocente.desde)), mm = Math.floor(rest / 60000), ss = String(Math.floor(rest / 1000) % 60).padStart(2, '0');
+    el.innerHTML = `<div class="lista-panel"><div class="lp-top"><span>📸</span><strong>Lista en curso</strong><span style="font-family:'DM Mono',monospace">${mm}:${ss}</span><span style="margin-left:auto">${nombres.length} confirmaron${enSala ? ' de ' + enSala + ' en sala' : ''}</span></div>${chips ? '<div style="margin-top:6px">' + chips + '</div>' : '<div style="font-size:12px;color:var(--text-light);margin-top:4px">Esperando confirmaciones… tienes la vista en cuadrícula para verlos.</div>'}</div>`;
+  } else {
+    const hora = new Date(_listaDocente.desde).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+    el.innerHTML = `<div class="lista-panel cerrada"><div class="lp-top"><span>✅</span><strong>Última lista (${hora})</strong><span style="margin-left:auto">${nombres.length} confirmaron</span></div>${chips ? '<div style="margin-top:6px">' + chips + '</div>' : ''}</div>`;
+  }
+}
+async function toggleLista() {
+  if (!_listaClassId) return;
+  const abierta = !!(_listaDocente && !_listaDocente.cerrada);
+  const id = abierta ? _listaDocente.id : Date.now().toString(36);
+  try {
+    await db.collection('liveClasses').doc(_listaClassId).collection('chat').add({
+      tipo: 'lista', accion: abierta ? 'cerrar' : 'abrir', listaId: id, text: abierta ? 'Lista por cámara terminada' : 'Lista por cámara iniciada',
+      uid: currentUser.uid, authorName: currentUser.displayName || currentUser.email, role: currentRole,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    // Durante la lista el profesor ve la cuadrícula; al terminar vuelve a verse a sí mismo
+    try { if (_jitsiApi && _salaState.tile !== !abierta) _jitsiApi.executeCommand('toggleTileView'); } catch (e) {}
+    if (abierta) setTimeout(_fijarYo, 700);
+  } catch (e) { toast('❌ No se pudo cambiar el estado de la lista: ' + e.message, 'error'); }
+}
+function salaTab(n) {
+  document.querySelectorAll('.sala-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === n));
+  document.querySelectorAll('.sala-pane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + n));
 }
 
 /* Cambio de estado de la clase en tiempo real (alumno/fiscalizador): entra solo cuando el profesor inicia */
@@ -897,6 +1137,7 @@ async function loginConEmail() {
   }
 }
 function logout() {
+  try { sessionStorage.removeItem('inasep_online_nav'); } catch (e) {}
   stopHeartbeat();
   auth.signOut();
 }
@@ -990,6 +1231,7 @@ function navigate(view, params={}) {
   }
   if ((currentView === 'class-room' || currentView === 'teacher-room') && view !== currentView) stopHeartbeat();
   _detenerVigilanciaSesion();
+  _limpiarLista();
   if (_jitsiApi) { try { _jitsiApi.dispose(); } catch (e) {} _jitsiApi = null; }
   if (_claseListener) { _claseListener(); _claseListener = null; }
   if (_chatListener) { _chatListener(); _chatListener = null; }
@@ -1005,6 +1247,7 @@ function navigate(view, params={}) {
 function renderMain(view, params={}) {
   if (!view) view = currentRole==='admin' ? 'dashboard' : currentRole==='teacher' ? 'live-classes' : currentRole==='fiscalizador' ? 'fisc-dashboard' : 'my-courses';
   currentView = view;
+  try { if (currentUser) sessionStorage.setItem('inasep_online_nav', JSON.stringify({ uid: currentUser.uid, view: view, params: params || {} })); } catch (e) {}
   const mc = document.getElementById('mainContent');
   mc.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div>';
 
@@ -1436,18 +1679,27 @@ async function renderClassRoom(mc, params={}) {
         <h2>${escHtml(cls.title)}</h2>
         <div class="breadcrumb"><a onclick="${esFisc?"navigate('fisc-clases')":"navigate('live-classes')"}">← Clases</a> › ${escHtml(cls.title)}</div>
       </div>
-      ${activa ? '<span class="badge badge-live">🔴 EN VIVO</span>' : finalizada ? '<span class="badge badge-gray">✅ Finalizada</span>' : '<span class="badge badge-blue">📅 Programada</span>'}
+      ${(cls.teacherName || cls.profesorNombre) ? `<span class="badge badge-blue" style="margin-right:8px">👨‍🏫 ${escHtml(cls.teacherName || cls.profesorNombre)}</span>` : ''}${activa ? '<span class="badge badge-live">🔴 EN VIVO</span>' : finalizada ? '<span class="badge badge-gray">✅ Finalizada</span>' : '<span class="badge badge-blue">📅 Programada</span>'}
     </div>
     ${cajaAsistencia}
-    <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
+    ${esFisc ? '' : '<div id="listaBanner"></div>'}
+    <div class="sala-layout">
+      <div class="sala-main">
+        <div class="card" style="padding:0;overflow:hidden;margin-bottom:0">
       <div class="video-room" id="videoRoom">${videoEmbed}</div>
       ${salaOk && activa ? `<div class="sala-toolbar"><button class="btn btn-sm btn-secondary" onclick="reingresarSala('${classId}')">🔄 Reingresar a la sala</button><button class="btn btn-sm btn-secondary" onclick="pantallaCompletaSala()">⛶ Pantalla completa horizontal</button><span style="color:var(--text-mid)">Si te desconectaste o la sala no carga, reingresa aquí.</span></div>` : ''}
+        </div>
+      </div>
+      <aside class="sala-side">
+        <div class="sala-tabs"><button class="sala-tab active" data-tab="chat" onclick="salaTab('chat')">💬 Chat de la clase</button></div>
+        <div class="sala-pane active" id="pane-chat">${htmlChat(classId, !esFisc)}</div>
+      </aside>
     </div>
-    ${htmlChat(classId, !esFisc)}
     <div style="margin-top:8px"><button class="btn btn-secondary" onclick="salirSalaAlumno('${classId}')">🚪 ${esFisc ? 'Salir de la observación' : 'Salir de la Clase'}</button></div>`;
 
   initClassChat(classId, !esFisc);
-  if (salaOk && activa) montarVideoJitsi('jitsiHost', classId);
+  if (salaOk && activa) montarVideoJitsi('jitsiHost', classId, { teacherName: cls.teacherName || cls.profesorNombre, titulo: cls.title });
+  if (activa && !esFisc) escucharLista(classId);
   escucharEstadoClase(classId, cls.status);
 }
 
@@ -1533,54 +1785,69 @@ async function renderTeacherRoom(mc, params={}) {
   mc.innerHTML = `
     <div class="page-header">
       <div>
-        <h2>👨‍🏫 ${escHtml(cls.title)}</h2>
+        <h2>${escHtml(cls.title)}</h2>
         <div class="breadcrumb"><a onclick="salirDeSala('${classId}')">← Mis Clases</a> › Vista Profesor</div>
       </div>
       ${isActive ? '<span class="badge badge-live">🔴 EN VIVO</span>' : isFinished ? '<span class="badge badge-gray">✅ Finalizada</span>' : '<span class="badge badge-gray">📅 No activa</span>'}
     </div>
 
     ${!isActive && !isFinished ? `
-    <div style="background:linear-gradient(135deg,#1a2e1e,#2a5536);border-radius:var(--radius-lg);padding:28px 24px;margin-bottom:20px;text-align:center;border:2px dashed rgba(255,255,255,0.15)">
+    <div style="background:linear-gradient(135deg,#1a2e1e,#2a5536);border-radius:var(--radius-lg);padding:28px 24px;margin-bottom:18px;text-align:center;border:2px dashed rgba(255,255,255,0.15)">
       <div style="font-size:40px;margin-bottom:12px">🎬</div>
       <h3 style="color:#fff;font-size:18px;font-weight:700;margin-bottom:8px">La clase aún no ha comenzado</h3>
       <p style="color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:20px">Al iniciar, los alumnos podrán entrar a la sala y se registrará tu asistencia. La hora oficial la fija el servidor.</p>
       <button id="btnIniciarClase" class="btn btn-success" style="padding:14px 32px;font-size:15px;border-radius:10px" ${salaOk ? '' : 'disabled'} onclick="iniciarClase('${classId}')">▶️ Iniciar Clase</button>
     </div>` : ''}
-    ${isFinished ? `<div class="card" style="border-color:var(--warning)"><strong>⏹ Clase finalizada.</strong>${cls.bloqueCerradoAt ? ' Cierre oficial: ' + fmtDateTime(cls.bloqueCerradoAt) + '.' : ''} Solo un administrador puede reabrirla.</div>` : ''}
+    ${isFinished ? `<div class="card" style="border-color:var(--warning);margin-bottom:16px"><strong>⏹ Clase finalizada.</strong>${cls.bloqueCerradoAt ? ' Cierre oficial: ' + fmtDateTime(cls.bloqueCerradoAt) + '.' : ''} Solo un administrador puede reabrirla. Aún puedes firmar el Libro de Clases.</div>` : ''}
+
     ${isActive ? `
-    <div style="background:linear-gradient(135deg,var(--green-900),var(--green-700));border-radius:var(--radius);padding:16px 20px;display:flex;align-items:center;justify-content:space-between;color:#fff;margin-bottom:16px;flex-wrap:wrap;gap:12px">
-      <div>
-        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:rgba(255,255,255,0.5);margin-bottom:2px">⏱ Tiempo de Docencia</div>
-        <div style="font-family:'DM Mono',monospace;font-size:32px;font-weight:500;color:var(--green-200);letter-spacing:3px" id="teacherTimer">00:00:00</div>
-      </div>
-      <div style="text-align:right">
-        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:rgba(255,255,255,0.5);margin-bottom:2px">Duración programada</div>
-        <div style="font-size:22px;font-family:'DM Mono';color:var(--green-100)">${durMin} min</div>
-        <div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:4px">${cls.bloqueIniciadoAt ? 'Inicio oficial: ' + fmtDateTime(cls.bloqueIniciadoAt) : ''}</div>
-      </div>
+    <div class="sala-bar">
+      <div class="sb-item"><span class="sb-lbl">⏱ Tiempo de docencia</span><span class="sb-val" id="teacherTimer">00:00:00</span></div>
+      <div class="sb-item"><span class="sb-lbl">Duración programada</span><span class="sb-val">${durMin} min</span></div>
+      <div class="sb-item"><span class="sb-lbl">En la sala</span><span class="sb-val">👥 <span id="salaCount">—</span></span></div>
+      ${cls.bloqueIniciadoAt ? `<div class="sb-item"><span class="sb-lbl">Inicio oficial</span><span class="sb-val" style="font-size:15px">${fmtDateTime(cls.bloqueIniciadoAt)}</span></div>` : ''}
     </div>` : ''}
 
-    <div class="card" style="margin-bottom:16px">
-      <div class="card-header"><h3>👥 Participantes de Hoy</h3><button class="btn btn-sm btn-secondary" onclick="recargarAlumnosRT('${classId}')">🔄 Actualizar</button></div>
-      <div id="teacherAlumnosRT"><div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div></div>
+    <div class="sala-layout">
+      <div class="sala-main">
+        <div class="card" style="padding:0;overflow:hidden;margin-bottom:0">
+          <div class="video-room" id="videoRoom">${videoEmbed}</div>
+          ${salaOk && isActive ? `<div class="sala-toolbar">
+            <button id="btnLista" class="btn btn-sm btn-primary" onclick="toggleLista()">📸 Pasar lista (cámaras)</button>
+            <button class="btn btn-sm btn-secondary" onclick="reingresarSala('${classId}')">🔄 Reingresar</button>
+            <button class="btn btn-sm btn-secondary" onclick="pantallaCompletaSala()">⛶ Pantalla completa</button>
+            <span style="color:var(--text-mid)">Los alumnos entran con la cámara apagada; solo se enciende cuando pasas lista.</span>
+          </div>` : ''}
+        </div>
+        <div id="listaPanel"></div>
+      </div>
+
+      <aside class="sala-side">
+        <div class="sala-tabs">
+          <button class="sala-tab active" data-tab="chat" onclick="salaTab('chat')">💬 Chat</button>
+          <button class="sala-tab" data-tab="alumnos" onclick="salaTab('alumnos')">👥 Participantes</button>
+          <button class="sala-tab" data-tab="libro" onclick="salaTab('libro')">📖 Libro</button>
+        </div>
+        <div class="sala-pane active" id="pane-chat">${htmlChat(classId, true)}</div>
+        <div class="sala-pane" id="pane-alumnos">
+          <div class="pane-pad">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><strong style="font-size:13px;color:var(--green-900)">Participantes de hoy</strong><button class="btn btn-sm btn-secondary" onclick="recargarAlumnosRT('${classId}')">🔄 Actualizar</button></div>
+            <div id="teacherAlumnosRT"><div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div></div>
+          </div>
+        </div>
+        <div class="sala-pane" id="pane-libro">
+          <div class="pane-pad">
+            <strong style="font-size:13px;color:var(--green-900)">📖 Libro de Clases Electrónico</strong>
+            <p style="font-size:12.5px;color:var(--text-mid);margin:6px 0 10px">Registra la materia tratada y firma para dejar constancia (exigible por OS10 también en modalidad online).</p>
+            <div class="form-group"><label>Materia / contenidos tratados *</label><textarea id="fc_materiaTratada" rows="5" placeholder="Ej: Marco legal Ley N° 21.659, funciones del guardia OS10..."></textarea></div>
+            <button class="btn btn-primary" onclick="firmarLibroClase('${classId}')">✍️ Firmar y Registrar</button>
+            <div id="libroClaseEstado" style="margin-top:10px"></div>
+          </div>
+        </div>
+      </aside>
     </div>
 
-    <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
-      <div class="video-room" id="videoRoom">${videoEmbed}</div>
-      ${salaOk && isActive ? `<div class="sala-toolbar"><button class="btn btn-sm btn-secondary" onclick="reingresarSala('${classId}')">🔄 Reingresar a la sala</button><button class="btn btn-sm btn-secondary" onclick="pantallaCompletaSala()">⛶ Pantalla completa horizontal</button><span style="color:var(--text-mid)">Entras como moderador. Si te desconectaste, reingresa aquí.</span></div>` : ''}
-    </div>
-
-    ${htmlChat(classId, true)}
-
-    <div class="card" style="margin-bottom:24px">
-      <div class="card-header"><h3>📖 Libro de Clases Electrónico</h3></div>
-      <p style="font-size:12.5px;color:var(--text-mid);margin-bottom:10px">Registra la materia tratada en esta sesión y firma para dejar constancia (exigible por OS10 también en modalidad online).</p>
-      <div class="form-group"><label>Materia / contenidos tratados *</label><textarea id="fc_materiaTratada" rows="3" placeholder="Ej: Marco legal Ley N° 21.659, funciones del guardia OS10..."></textarea></div>
-      <button class="btn btn-primary" onclick="firmarLibroClase('${classId}')">✍️ Firmar y Registrar en Libro de Clases</button>
-      <div id="libroClaseEstado" style="margin-top:10px"></div>
-    </div>
-
-    <div class="flex gap-2 flex-wrap">
+    <div class="flex gap-2 flex-wrap" style="margin-bottom:24px">
       <button class="btn btn-secondary" onclick="salirDeSala('${classId}')">🚪 Salir de la Sala (la clase sigue abierta)</button>
       ${isActive ? `<button class="btn btn-danger" onclick="cerrarClaseDocente('${classId}')">⏹ Finalizar Clase para Todos</button>` : ''}
     </div>`;
@@ -1596,7 +1863,10 @@ async function renderTeacherRoom(mc, params={}) {
   cargarAlumnosRT(classId);
   initClassChat(classId, true);
   cargarEstadoLibroClase(classId);
-  if (salaOk && isActive) montarVideoJitsi('jitsiHost', classId);
+  if (salaOk && isActive) {
+    montarVideoJitsi('jitsiHost', classId, { teacherName: cls.teacherName || cls.profesorNombre, titulo: cls.title });
+    escucharLista(classId);
+  }
 }
 
 function recargarAlumnosRT(classId) {
@@ -1878,6 +2148,25 @@ async function cargarTablaAsistencia() {
       cont.innerHTML='<div class="empty-state"><div class="icon">📭</div><p>No hay alumnos registrados.</p></div>'; return;
     }
 
+    // Registros que no pertenecen a un alumno activo: profesores, administradores o alumnos eliminados
+    const _ids = new Set(alumnosDocs.map(d => d.data().uid || d.id));
+    const _otros = attSnap.docs.map(d => d.data()).filter(a => !_ids.has(a.userId));
+    const extrasHtml = _otros.length ? `
+      <div class="card" style="margin-top:16px">
+        <div class="card-header"><h3>👤 Otros registros del día</h3><span class="badge badge-gray">${_otros.length}</span></div>
+        <div style="padding:0 18px 6px;font-size:12px;color:var(--text-light)">Profesores, administradores o alumnos que ya no están en la lista.</div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Nombre</th><th>Rol</th><th>Clase</th><th>Entrada</th><th>Salida</th><th>Minutos</th></tr></thead>
+          <tbody>${_otros.map(a => `<tr>
+            <td><strong>${escHtml(a.userName || '—')}</strong></td>
+            <td>${escHtml(a.userRole === 'teacher' ? 'Profesor' : a.userRole === 'admin' ? 'Administrador' : a.userRole === 'student' ? 'Alumno (eliminado)' : (a.userRole || '—'))}</td>
+            <td style="font-size:12px">${escHtml(a.classTitle || '—')}</td>
+            <td style="font-size:12px;font-family:'DM Mono'">${a.checkedAt ? fmtTime(a.checkedAt) : '—'}</td>
+            <td style="font-size:12px;font-family:'DM Mono'">${a.salidaAt ? fmtTime(a.salidaAt) : '—'}</td>
+            <td style="font-size:12px;text-align:center">${a.minutosEnClase ? a.minutosEnClase + ' min' : '—'}</td>
+          </tr>`).join('')}</tbody></table></div>
+      </div>` : '';
+
     const dateFormatted = new Date(date+'T12:00:00').toLocaleDateString('es-CL',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
 
     cont.innerHTML = `
@@ -1906,7 +2195,7 @@ async function cargarTablaAsistencia() {
               <td><span class="${online?'online-dot':'offline-dot'}"></span>${online?'<span style="color:var(--success);font-size:12px;font-weight:600">🟢 Online</span>':'<span style="color:#c0392b;font-size:12px;font-weight:600">🔴 Offline</span>'}</td>
             </tr>`;
           }).join('')}</tbody></table></div>
-      </div>`;
+      </div>${extrasHtml}`;
   } catch(e) {
     cont.innerHTML=`<div class="empty-state"><div class="icon">❌</div><p>${escHtml(e.message)}</p></div>`;
   }
@@ -2623,10 +2912,9 @@ async function crearAlumnosMasivo() {
       if (!existing.empty) { skip++; continue; }
       const email = rutToEmail(a.rut);
       const pass  = rutToPassword(a.rut);
-      const cred  = await secondaryAuth.createUserWithEmailAndPassword(email, pass);
-      await cred.user.updateProfile({displayName:a.nombre});
-      await db.collection('users').doc(cred.user.uid).set({
-        uid:cred.user.uid, email, name:a.nombre, rut:a.rut,
+      const cred  = await _obtenerCuentaAuth(email, pass, a.nombre);
+      await db.collection('users').doc(cred.uid).set({
+        uid:cred.uid, email, name:a.nombre, rut:a.rut,
         role:'student', createdAt:firebase.firestore.FieldValue.serverTimestamp()
       });
       await secondaryAuth.signOut();
@@ -2659,6 +2947,31 @@ function showAgregarAlumno() {
     </div>`);
 }
 
+/* Crea la cuenta de acceso del RUT; si ya existía (alumno eliminado antes), la reutiliza con su clave por defecto (últimos 6 dígitos del RUT) */
+async function _obtenerCuentaAuth(email, pass, nombre) {
+  try {
+    const cred = await secondaryAuth.createUserWithEmailAndPassword(email, pass);
+    await cred.user.updateProfile({displayName: nombre});
+    return { uid: cred.user.uid, recuperada: false };
+  } catch (e) {
+    if (e.code !== 'auth/email-already-in-use') throw e;
+    try {
+      const cred = await secondaryAuth.signInWithEmailAndPassword(email, pass);
+      try { await cred.user.updateProfile({displayName: nombre}); } catch (_) {}
+      return { uid: cred.user.uid, recuperada: true };
+    } catch (e2) {
+      const err = new Error('CLAVE_DISTINTA'); err.code = 'CLAVE_DISTINTA'; throw err;
+    }
+  }
+}
+async function eliminarAlumno(uid, nombre) {
+  if (!confirm(`¿Eliminar al alumno "${nombre}"?\n\nSe borra su ficha: ya no podrá entrar al portal ni aparecerá en las listas. Su asistencia histórica se conserva. Si lo vuelves a crear con el mismo RUT, se reactiva su cuenta.`)) return;
+  try {
+    await db.collection('users').doc(uid).delete();
+    toast(`🗑️ ${nombre} eliminado.`,'success');
+    cargarListaAlumnos();
+  } catch(e) { toast('❌ Error: '+e.message,'error'); }
+}
 async function crearAlumno() {
   const nombre = document.getElementById('aa_nombre').value.trim();
   const rut    = document.getElementById('aa_rut').value.trim();
@@ -2668,35 +2981,24 @@ async function crearAlumno() {
   const pass  = rutToPassword(rut);
   try {
     const ex = await db.collection('users').where('rut','==',rut).limit(1).get();
-    if (!ex.empty) return toast('⚠️ Este RUT ya está registrado.','warning');
-    const cred = await secondaryAuth.createUserWithEmailAndPassword(email, pass);
-    await cred.user.updateProfile({displayName:nombre});
-    await db.collection('users').doc(cred.user.uid).set({
-      uid:cred.user.uid, email, name:nombre, rut,
+    if (!ex.empty) {
+      const x = ex.docs[0].data();
+      return toast(`⚠️ Este RUT ya está registrado como ${x.name || '—'} (${x.role || 'sin rol'}). Búscalo en la lista de ${x.role === 'teacher' ? 'Profesores' : 'Alumnos'}.`,'warning',9000);
+    }
+    const u = await _obtenerCuentaAuth(email, pass, nombre);
+    await db.collection('users').doc(u.uid).set({
+      uid:u.uid, email, name:nombre, rut,
       role:'student', createdAt:firebase.firestore.FieldValue.serverTimestamp()
     });
     await secondaryAuth.signOut();
     closeModal();
-    toast(`✅ Alumno ${nombre} creado. Contraseña: ${pass}`,'success',7000);
+    toast(`✅ Alumno ${nombre} ${u.recuperada ? 'reactivado (su cuenta ya existía)' : 'creado'}. Contraseña: ${pass}`,'success',7000);
     cargarListaAlumnos();
   } catch(e) {
-    if (e.code==='auth/email-already-in-use') toast('⚠️ Este RUT ya tiene cuenta.','warning');
+    if (e.code==='CLAVE_DISTINTA') toast('⚠️ Ese RUT tiene una cuenta antigua con otra contraseña. Bórrala en Firebase → Authentication y vuelve a crear al alumno.','warning',10000);
     else toast('❌ Error: '+e.message,'error');
   }
 }
-
-async function eliminarAlumno(uid, nombre) {
-  if (!confirm(`¿Eliminar al alumno "${nombre}"? Se elimina de Firestore (no de Authentication).`)) return;
-  try {
-    await db.collection('users').doc(uid).delete();
-    toast(`🗑️ ${nombre} eliminado.`,'success');
-    cargarListaAlumnos();
-  } catch(e) { toast('❌ Error: '+e.message,'error'); }
-}
-
-/* ════════════════════════════════════════════════
-   GESTIÓN DE PROFESORES
-════════════════════════════════════════════════ */
 async function renderProfesores(mc) {
   mc.innerHTML = `
     <div class="page-header">
