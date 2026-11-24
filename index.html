@@ -474,6 +474,29 @@ iframe.video-frame { width:100%; height:100%; min-height:500px; border:none; }
 .lista-panel .lp-top strong { font-size:14.5px; }
 .lista-chip { display:inline-block; background:var(--green-50); border:1px solid var(--border); color:var(--green-900); border-radius:99px; padding:3px 10px; font-size:11.5px; margin:3px 4px 0 0; }
 @media (max-width:1000px){ .sala-layout { grid-template-columns:1fr; } .sala-side { height:520px; } .sala-bar { gap:14px; } }
+/* ── Carpetas de cursos ── */
+.carp-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px; margin-bottom:22px; }
+.carp { background:#fff; border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:16px 18px; cursor:pointer; transition:transform .15s, box-shadow .15s, border-color .15s; display:flex; gap:14px; align-items:flex-start; }
+.carp:hover { transform:translateY(-2px); box-shadow:0 8px 24px rgba(13,31,20,.12); border-color:var(--primary-light); }
+.carp .carp-ic { font-size:34px; line-height:1; }
+.carp .carp-name { font-weight:700; color:var(--green-900); font-size:14.5px; line-height:1.3; margin-bottom:6px; }
+.carp .carp-meta { font-size:12px; color:var(--text-mid); display:flex; flex-wrap:wrap; gap:4px 12px; margin-bottom:8px; }
+.carp-mes { font-size:12px; font-weight:700; letter-spacing:.8px; text-transform:uppercase; color:var(--text-light); margin:20px 0 10px; }
+.cp-tabs { display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap; }
+.cp-tab { padding:8px 16px; border-radius:99px; border:1px solid var(--border); background:#fff; cursor:pointer; font-size:13px; font-weight:600; color:var(--text-mid); font-family:inherit; }
+.cp-tab.active { background:var(--primary); border-color:var(--primary); color:#fff; }
+.mx-wrap { overflow:auto; max-height:68vh; border:1px solid var(--border); border-radius:var(--radius); background:#fff; }
+.mx { border-collapse:separate; border-spacing:0; font-size:12.5px; min-width:100%; }
+.mx th, .mx td { padding:8px 10px; border-bottom:1px solid var(--border); border-right:1px solid #eef4f0; white-space:nowrap; text-align:center; background:#fff; }
+.mx thead th { position:sticky; top:0; background:#f4f9f6; z-index:2; font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:var(--text-mid); }
+.mx .stk { position:sticky; left:0; text-align:left; z-index:1; background:#fff; min-width:210px; box-shadow:2px 0 0 var(--border); }
+.mx thead .stk { z-index:3; background:#f4f9f6; }
+.mx td.ok { background:#e9f8ef; color:#1a7a3a; font-weight:700; }
+.mx td.par { background:#fff6e5; color:#b45309; font-weight:700; }
+.mx td.aus { color:#c0392b; }
+.mx td small { display:block; font-weight:500; font-size:10.5px; opacity:.75; }
+.mx-leyenda { display:flex; gap:16px; flex-wrap:wrap; font-size:12px; color:var(--text-mid); margin:10px 2px 0; }
+.mx-leyenda i { display:inline-block; width:12px; height:12px; border-radius:3px; margin-right:5px; vertical-align:-2px; }
 @media (max-width:768px){ .jitsi-host, .jitsi-host iframe { min-height:0; } .video-room { min-height:0; aspect-ratio:16/9; height:auto; } }
 </style>
 </head>
@@ -1187,6 +1210,7 @@ function updateSidebar() {
     { label:'🎓 Alumnos',         view:'alumnos'          },
     { label:'👨‍🏫 Profesores',      view:'profesores'       },
     { label:'👥 Asistencia',      view:'attendance'       },
+    { label:'📁 Carpetas de Cursos', view:'carpetas'      },
     { label:'📊 Reportes',        view:'reports'          },
     { label:'🗓️ Horario',         view:'schedule'         },
     { label:'📖 Libro de Clases', view:'libro-clases'     },
@@ -1195,6 +1219,7 @@ function updateSidebar() {
     { label:'📁 Cursos Archivados', view:'cursos-archivados'},
   ] : isTeacher ? [
     { label:'📹 Mis Clases',      view:'live-classes'     },
+    { label:'📁 Carpetas de Cursos', view:'carpetas'      },
     { label:'👥 Asistencia Hoy',  view:'teacher-attendance'},
     { label:'📊 Reportes',        view:'teacher-reports'  },
     { label:'📖 Libro de Clases', view:'libro-clases'     },
@@ -1203,6 +1228,7 @@ function updateSidebar() {
     { label:'🔍 Panel Fiscalización', view:'fisc-dashboard'   },
     { label:'📹 Clases',              view:'fisc-clases'      },
     { label:'👥 Asistencia Diaria',   view:'fisc-asistencia'  },
+    { label:'📁 Carpetas de Cursos',  view:'carpetas'         },
     { label:'📊 Reportes',            view:'fisc-reportes'    },
     { label:'🎓 Alumnos',             view:'fisc-alumnos'     },
     { label:'🗓️ Horario',             view:'fisc-horario'     },
@@ -1239,7 +1265,8 @@ function navigate(view, params={}) {
   currentView = view;
   closeSidebar();
   document.querySelectorAll('.sidebar-nav a').forEach(a => a.classList.remove('active'));
-  const navEl = document.getElementById('nav-' + view.split('/')[0]);
+  const _baseNav = view.split('/')[0] === 'carpeta-curso' ? 'carpetas' : view.split('/')[0];
+  const navEl = document.getElementById('nav-' + _baseNav);
   if (navEl) navEl.classList.add('active');
   renderMain(view, params);
 }
@@ -1279,6 +1306,8 @@ function renderMain(view, params={}) {
     'post-class-student':  renderPostClassStudent,
     'schedule-view':       renderScheduleView,
     'libro-clases':        renderLibroClases,
+    'carpetas':            renderCarpetas,
+    'carpeta-curso':       renderCarpetaCurso,
     'fisc-libro':          renderLibroClases,
   };
   const fn = views[view.split('/')[0]];
@@ -1968,8 +1997,11 @@ async function salirDeSala(classId) {
     _teacherSessionDocId = null; _teacherClassStart = null;
   }
   _teacherCurrentClassId = null;
-  if (cid && (currentRole === 'teacher' || currentRole === 'admin')) navigate('post-class', { id: cid });
-  else navigate('live-classes');
+  if (_jitsiApi) { try { _jitsiApi.dispose(); } catch (e) {} _jitsiApi = null; }
+  const ir = () => { if (cid && (currentRole === 'teacher' || currentRole === 'admin')) navigate('post-class', { id: cid }); else navigate('live-classes'); };
+  // Profesor que dictó la clase: se le pide registrar contenidos y firmar su salida en el Libro de Clases
+  if (cid && currentRole === 'teacher' && await _docenteEstuvoEnClase(cid) && !(await _libroFirmado(cid))) return pedirFirmaLibro(cid, ir);
+  ir();
 }
 
 /* ════════════════════════════════════════════════
@@ -2140,6 +2172,7 @@ async function cargarTablaAsistencia() {
     const attMap = {};
     attSnap.docs.forEach(d => {
       const a=d.data();
+      if (!_esAsistAlumno(a)) return;   // profesores y administradores no cuentan como alumnos
       const key = classId ? a.userId : `${a.userId}__${a.classId}`;
       attMap[key] = a;
     });
@@ -2150,11 +2183,11 @@ async function cargarTablaAsistencia() {
 
     // Registros que no pertenecen a un alumno activo: profesores, administradores o alumnos eliminados
     const _ids = new Set(alumnosDocs.map(d => d.data().uid || d.id));
-    const _otros = attSnap.docs.map(d => d.data()).filter(a => !_ids.has(a.userId));
+    const _otros = attSnap.docs.map(d => d.data()).filter(a => !_ids.has(a.userId) || !_esAsistAlumno(a));
     const extrasHtml = _otros.length ? `
       <div class="card" style="margin-top:16px">
         <div class="card-header"><h3>👤 Otros registros del día</h3><span class="badge badge-gray">${_otros.length}</span></div>
-        <div style="padding:0 18px 6px;font-size:12px;color:var(--text-light)">Profesores, administradores o alumnos que ya no están en la lista.</div>
+        <div style="padding:0 18px 6px;font-size:12px;color:var(--text-light)">Docentes y administradores (no cuentan como alumnos) y alumnos que ya no están en la lista.</div>
         <div class="table-wrap"><table>
           <thead><tr><th>Nombre</th><th>Rol</th><th>Clase</th><th>Entrada</th><th>Salida</th><th>Minutos</th></tr></thead>
           <tbody>${_otros.map(a => `<tr>
@@ -2173,7 +2206,7 @@ async function cargarTablaAsistencia() {
       <div class="card">
         <div class="card-header">
           <h3>📋 Asistencia — ${escHtml(dateFormatted)}</h3>
-          <span class="badge badge-blue">${attSnap.docs.filter(d=>d.data().present).length} presentes</span>
+          <span class="badge badge-blue">${attSnap.docs.filter(d=>d.data().present && _esAsistAlumno(d.data())).length} presentes</span>
         </div>
         <div class="table-wrap"><table>
           <thead><tr><th>Alumno</th><th>RUT</th><th>Estado</th><th>Entrada</th><th>Salida</th><th>Minutos</th><th>Online</th></tr></thead>
@@ -4429,56 +4462,448 @@ async function cargarEstadoLibroClase(classId) {
       const lc = snap.docs[0].data();
       const ta = document.getElementById('fc_materiaTratada'); if (ta) ta.value = lc.materiaTratada || '';
       box.innerHTML = lc.firmaDocente?.firmado
-        ? `<span class="badge badge-green">✅ Firmado el ${fmtDateTime(lc.firmaDocente.fecha)} por ${escHtml(lc.firmaDocente.nombre||'')}</span>`
+        ? `<span class="badge badge-green">✅ Salida firmada el ${fmtDateTime(lc.firmaDocente.fecha)} por ${escHtml(lc.firmaDocente.nombre||'')}</span>`
         : `<span class="badge badge-gray">⏳ Aún sin firmar</span>`;
     }
   } catch (e) { /* silencioso */ }
+}
+/* ════════════════════════════════════════════════
+   CARPETAS DE CURSOS — una carpeta por curso, con la asistencia diaria de cada alumno (tabla alumnos × días) y exportación a Excel
+════════════════════════════════════════════════ */
+const UMBRAL_ASIST = 75;           // % del bloque oficial para contar el día como presente completo
+const SIN_CURSO = 'Sin curso asignado';
+let _carpetas = [], _curso = null, _cursoTab = 'matriz', _cursoDia = '';
+
+const _toD = (ts) => ts ? (ts.toDate ? ts.toDate() : new Date(ts)) : null;
+const _hm = (ts) => { const d = _toD(ts); return d ? d.toLocaleTimeString('es-CL', { timeZone: 'America/Santiago', hour: '2-digit', minute: '2-digit' }) : '—'; };
+const _diaChile = (ts) => { const d = _toD(ts); return d ? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santiago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d) : ''; };
+const _claseDia = (c) => _diaChile(c.bloqueIniciadoAt || c.scheduledAt);
+const _diaLabel = (ds) => new Date(ds + 'T12:00:00').toLocaleDateString('es-CL', { weekday: 'short', day: '2-digit', month: '2-digit' });
+const _esAsistAlumno = (a) => !a.userRole || a.userRole === 'student';   // el rol se guarda en cada registro al momento de entrar
+const _esMiClase = (c) => (Array.isArray(c.profesoresUids) && c.profesoresUids.includes(currentUser.uid)) || c.profesorUid === currentUser.uid || c.teacherUid === currentUser.uid;
+function _minOficial(c) {
+  const i = _toD(c.bloqueIniciadoAt); let f = _toD(c.bloqueCerradoAt);
+  if (i && !f && c.status === 'active') f = new Date();
+  if (i && f) return Math.max(1, Math.round((f - i) / 60000));
+  return Number(c.duration) || 60;
+}
+const _nombreCursoDe = (c) => ((c.courseName || '').trim() || SIN_CURSO);
+
+async function renderCarpetas(mc) {
+  mc.innerHTML = `
+    <div class="page-header">
+      <div><h2>📁 Carpetas de Cursos</h2><div class="breadcrumb">Cada curso guarda sus clases, alumnos y asistencia diaria</div></div>
+      <input type="text" id="carpBuscar" placeholder="🔎 Buscar curso..." oninput="pintarCarpetas()" style="padding:9px 14px;border:1px solid var(--border);border-radius:99px;font-family:inherit;font-size:13px;min-width:230px">
+    </div>
+    <div id="carpetasCont"><div class="empty-state"><div class="icon">⏳</div><p>Cargando cursos...</p></div></div>`;
+  try {
+    const snap = await db.collection('liveClasses').get();
+    let clases = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (currentRole === 'teacher') clases = clases.filter(_esMiClase);
+    const alSnap = await db.collection('users').where('role', '==', 'student').get();
+    const alumnos = alSnap.docs.map(d => d.data());
+    const mapa = {};
+    clases.forEach(c => { const n = _nombreCursoDe(c); (mapa[n] = mapa[n] || { nombre: n, clases: [] }).clases.push(c); });
+    _carpetas = Object.values(mapa).map(f => {
+      const dias = [...new Set(f.clases.map(_claseDia).filter(Boolean))].sort();
+      const estados = f.clases.map(c => c.status);
+      return {
+        nombre: f.nombre, nClases: f.clases.length, nDias: dias.length, primero: dias[0] || '', ultimo: dias[dias.length - 1] || '',
+        estado: estados.includes('active') ? 'En curso' : estados.every(x => x === 'finished') ? 'Finalizado' : 'Programado',
+        matriculados: alumnos.filter(a => Array.isArray(a.cursos) && a.cursos.includes(f.nombre)).length
+      };
+    }).sort((a, b) => (b.ultimo || '').localeCompare(a.ultimo || ''));
+    pintarCarpetas();
+  } catch (e) { document.getElementById('carpetasCont').innerHTML = `<div class="empty-state"><div class="icon">❌</div><p>${escHtml(e.message)}</p></div>`; }
+}
+function pintarCarpetas() {
+  const cont = document.getElementById('carpetasCont'); if (!cont) return;
+  const q = ((document.getElementById('carpBuscar') || {}).value || '').toLowerCase().trim();
+  const lista = _carpetas.map((f, i) => ({ f, i })).filter(x => !q || x.f.nombre.toLowerCase().includes(q));
+  if (!lista.length) { cont.innerHTML = `<div class="empty-state"><div class="icon">📂</div><p>${_carpetas.length ? 'Ningún curso coincide con la búsqueda.' : 'Aún no hay cursos. Se crean solos al programar clases con un nombre de curso.'}</p></div>`; return; }
+  const grupos = {};
+  lista.forEach(x => { const k = x.f.ultimo ? x.f.ultimo.slice(0, 7) : 'sin-fecha'; (grupos[k] = grupos[k] || []).push(x); });
+  cont.innerHTML = Object.keys(grupos).sort().reverse().map(k => {
+    const titulo = k === 'sin-fecha' ? 'Sin fecha' : new Date(k + '-15T12:00:00').toLocaleDateString('es-CL', { month: 'long', year: 'numeric' });
+    return `<div class="carp-mes">${escHtml(titulo)}</div><div class="carp-grid">${grupos[k].map(({ f, i }) => `
+      <div class="carp" onclick="abrirCarpeta(${i})">
+        <div class="carp-ic">📁</div>
+        <div style="flex:1;min-width:0">
+          <div class="carp-name">${escHtml(f.nombre)}</div>
+          <div class="carp-meta"><span>📹 ${f.nClases} clase${f.nClases === 1 ? '' : 's'}</span><span>📅 ${f.nDias} día${f.nDias === 1 ? '' : 's'}</span><span>🎓 ${f.matriculados} matriculado${f.matriculados === 1 ? '' : 's'}</span></div>
+          <span class="badge ${f.estado === 'En curso' ? 'badge-live' : f.estado === 'Finalizado' ? 'badge-gray' : 'badge-blue'}">${f.estado}</span>
+          ${f.primero ? `<span style="font-size:11.5px;color:var(--text-light);margin-left:6px">${fmtDate(f.primero + 'T12:00:00')}${f.ultimo !== f.primero ? ' → ' + fmtDate(f.ultimo + 'T12:00:00') : ''}</span>` : ''}
+        </div>
+      </div>`).join('')}</div>`;
+  }).join('');
+}
+function abrirCarpeta(i) { const f = _carpetas[i]; if (f) navigate('carpeta-curso', { name: f.nombre }); }
+
+async function cargarCurso(name) {
+  let cs;
+  if (name === SIN_CURSO) { const all = await db.collection('liveClasses').get(); cs = all.docs.filter(d => !(d.data().courseName || '').trim()); }
+  else cs = (await db.collection('liveClasses').where('courseName', '==', name).get()).docs;
+  let clases = cs.map(d => ({ id: d.id, ...d.data() }));
+  if (currentRole === 'teacher') clases = clases.filter(_esMiClase);
+  clases.sort((a, b) => (_toD(a.bloqueIniciadoAt || a.scheduledAt) || 0) - (_toD(b.bloqueIniciadoAt || b.scheduledAt) || 0));
+  const iniciadas = clases.filter(c => c.status === 'active' || c.status === 'finished');
+  const porId = {}; clases.forEach(c => { porId[c.id] = c; });
+
+  let att = [];
+  const ids = iniciadas.map(c => c.id);
+  for (let i = 0; i < ids.length; i += 10) {
+    const sn = await db.collection('attendance').where('classId', 'in', ids.slice(i, i + 10)).get();
+    sn.docs.forEach(d => att.push({ id: d.id, ...d.data() }));
+  }
+  const stSnap = await db.collection('users').where('role', '==', 'student').get();
+  const todos = stSnap.docs.map(d => ({ uid: d.id, ...d.data() })).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'));
+
+  // Días de clase (varios bloques el mismo día se suman)
+  const mapaDias = {};
+  iniciadas.forEach(c => { const d = _claseDia(c); if (!d) return; const x = (mapaDias[d] = mapaDias[d] || { fecha: d, clases: [], oficial: 0 }); x.clases.push(c); x.oficial += _minOficial(c); });
+  const dias = Object.values(mapaDias).sort((a, b) => a.fecha.localeCompare(b.fecha));
+
+  // Asistencia de alumnos por alumno y día; asistencia de docentes por día
+  const celdas = {}, docentes = {};
+  att.forEach(a => {
+    const c = porId[a.classId]; if (!c) return; const dia = _claseDia(c); if (!dia) return;
+    if (_esAsistAlumno(a)) {
+      const k = a.userId + '|' + dia; const x = (celdas[k] = celdas[k] || { min: 0, present: false, entrada: null, salida: null });
+      x.min += Number(a.minutosEnClase) || 0; if (a.present) x.present = true;
+      const e = _toD(a.checkedAt), sl = _toD(a.salidaAt);
+      if (e && (!x.entrada || e < x.entrada)) x.entrada = e;
+      if (sl && (!x.salida || sl > x.salida)) x.salida = sl;
+    } else {
+      const k = dia + '|' + a.userId; const x = (docentes[k] = docentes[k] || { dia, nombre: a.userName || '—', rol: a.userRole, min: 0, entrada: null, salida: null });
+      x.min += Number(a.minutosEnClase) || 0;
+      const e = _toD(a.checkedAt), sl = _toD(a.salidaAt);
+      if (e && (!x.entrada || e < x.entrada)) x.entrada = e;
+      if (sl && (!x.salida || sl > x.salida)) x.salida = sl;
+    }
+  });
+
+  // Nómina: matriculados en el curso + cualquiera que haya asistido
+  const nomina = {};
+  todos.forEach(u => { if (Array.isArray(u.cursos) && u.cursos.includes(name)) nomina[u.uid] = { uid: u.uid, nombre: u.name || '—', rut: u.rut || '—', matriculado: true }; });
+  att.filter(_esAsistAlumno).forEach(a => { if (!nomina[a.userId]) { const u = todos.find(t => t.uid === a.userId); nomina[a.userId] = { uid: a.userId, nombre: u?.name || a.userName || '—', rut: u?.rut || a.userRut || '—', matriculado: false, eliminado: !u }; } });
+  const alumnos = Object.values(nomina).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+
+  const totalOficial = dias.reduce((t, d) => t + d.oficial, 0);
+  alumnos.forEach(al => {
+    al.dias = dias.map(d => {
+      const x = celdas[al.uid + '|' + d.fecha];
+      if (!x || !x.present) return { estado: 'A', min: 0, pct: 0 };
+      const pct = d.oficial > 0 ? Math.min(100, Math.round(x.min / d.oficial * 100)) : 0;
+      return { estado: pct >= UMBRAL_ASIST ? 'P' : 'PP', min: x.min, pct, entrada: x.entrada, salida: x.salida };
+    });
+    al.P = al.dias.filter(x => x.estado === 'P').length; al.PP = al.dias.filter(x => x.estado === 'PP').length; al.A = al.dias.filter(x => x.estado === 'A').length;
+    al.minTotal = al.dias.reduce((t, x) => t + x.min, 0);
+    al.pct = dias.length ? Math.round(al.P / dias.length * 100) : 0;
+    al.pctMin = totalOficial ? Math.min(100, Math.round(al.minTotal / totalOficial * 100)) : 0;
+  });
+  return { nombre: name, clases, iniciadas, dias, alumnos, docentes: Object.values(docentes), todos, totalOficial };
+}
+
+async function renderCarpetaCurso(mc, params = {}) {
+  const name = params.name;
+  if (!name) return navigate('carpetas');
+  mc.innerHTML = `<div class="empty-state"><div class="icon">⏳</div><p>Cargando carpeta del curso...</p></div>`;
+  try {
+    _curso = await cargarCurso(name);
+    _cursoTab = 'matriz'; _cursoDia = _curso.dias.length ? _curso.dias[_curso.dias.length - 1].fecha : '';
+    const c = _curso;
+    const prom = c.alumnos.length ? Math.round(c.alumnos.reduce((t, a) => t + a.pct, 0) / c.alumnos.length) : 0;
+    mc.innerHTML = `
+      <div class="page-header">
+        <div><h2>📁 ${escHtml(name)}</h2><div class="breadcrumb"><a onclick="navigate('carpetas')">← Carpetas</a> › ${escHtml(name)}</div></div>
+        <button class="btn btn-primary" onclick="exportarCurso()">📥 Descargar Excel</button>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-icon">📹</div><div class="stat-value">${c.iniciadas.length}</div><div class="stat-label">Clases realizadas</div></div>
+        <div class="stat-card"><div class="stat-icon">📅</div><div class="stat-value">${c.dias.length}</div><div class="stat-label">Días de clase</div></div>
+        <div class="stat-card"><div class="stat-icon">🎓</div><div class="stat-value">${c.alumnos.length}</div><div class="stat-label">Alumnos</div></div>
+        <div class="stat-card"><div class="stat-icon">✅</div><div class="stat-value">${prom}%</div><div class="stat-label">Asistencia promedio</div></div>
+      </div>
+      <div class="cp-tabs">
+        <button class="cp-tab active" data-t="matriz" onclick="cursoTab('matriz')">📊 Matriz por día</button>
+        <button class="cp-tab" data-t="dia" onclick="cursoTab('dia')">📅 Detalle de un día</button>
+        <button class="cp-tab" data-t="alumnos" onclick="cursoTab('alumnos')">🎓 Alumnos del curso</button>
+      </div>
+      <div id="cursoCont"></div>`;
+    pintarCurso();
+  } catch (e) { mc.innerHTML = `<div class="empty-state"><div class="icon">❌</div><p>${escHtml(e.message)}</p></div>`; }
+}
+function cursoTab(t) { _cursoTab = t; document.querySelectorAll('.cp-tab').forEach(b => b.classList.toggle('active', b.dataset.t === t)); pintarCurso(); }
+function cursoDia(d) { _cursoDia = d; pintarCurso(); }
+
+function pintarCurso() {
+  const cont = document.getElementById('cursoCont'); if (!cont || !_curso) return;
+  const c = _curso;
+  if (_cursoTab === 'matriz') {
+    if (!c.dias.length) { cont.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>Este curso aún no tiene clases realizadas.</p></div>'; return; }
+    if (!c.alumnos.length) { cont.innerHTML = '<div class="empty-state"><div class="icon">🎓</div><p>Este curso aún no tiene alumnos. Matricula alumnos en la pestaña "Alumnos del curso".</p></div>'; return; }
+    cont.innerHTML = `<div class="mx-wrap"><table class="mx"><thead><tr>
+      <th class="stk">Alumno</th><th>RUT</th>${c.dias.map(d => `<th title="${d.clases.length} bloque(s) · ${d.oficial} min oficiales">${_diaLabel(d.fecha)}</th>`).join('')}<th>Presente</th><th>Parcial</th><th>Ausente</th><th>% asist.</th></tr></thead><tbody>
+      ${c.alumnos.map((a, i) => `<tr>
+        <td class="stk"><strong>${i + 1}. ${escHtml(a.nombre)}</strong>${!a.matriculado ? ' <span class="badge badge-orange" style="font-size:9.5px" title="Asistió pero no está matriculado en este curso">sin matricular</span>' : ''}</td>
+        <td style="font-family:'DM Mono';font-size:12px">${escHtml(a.rut)}</td>
+        ${a.dias.map(x => x.estado === 'P' ? `<td class="ok" title="Entrada ${x.entrada ? _hm(x.entrada) : '—'} · Salida ${x.salida ? _hm(x.salida) : '—'}">✔<small>${x.min} min</small></td>`
+          : x.estado === 'PP' ? `<td class="par" title="Asistencia parcial: ${x.pct}% del bloque">½<small>${x.min} min</small></td>` : '<td class="aus">✕</td>').join('')}
+        <td><strong>${a.P}</strong></td><td>${a.PP}</td><td>${a.A}</td>
+        <td><span class="badge ${a.pct >= 80 ? 'badge-green' : a.pct >= 60 ? 'badge-orange' : 'badge-red'}">${a.pct}%</span></td></tr>`).join('')}
+      </tbody></table></div>
+      <div class="mx-leyenda"><span><i style="background:#e9f8ef;border:1px solid #bfe6cd"></i>✔ Presente (≥ ${UMBRAL_ASIST}% del bloque)</span><span><i style="background:#fff6e5;border:1px solid #f3d9a4"></i>½ Parcial (menos de ${UMBRAL_ASIST}%)</span><span><i style="background:#fff;border:1px solid var(--border)"></i>✕ Ausente</span></div>`;
+  } else if (_cursoTab === 'dia') {
+    if (!c.dias.length) { cont.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>Este curso aún no tiene clases realizadas.</p></div>'; return; }
+    const i = c.dias.findIndex(d => d.fecha === _cursoDia); const dia = c.dias[i < 0 ? c.dias.length - 1 : i]; const di = c.dias.indexOf(dia);
+    const docs = c.docentes.filter(x => x.dia === dia.fecha);
+    cont.innerHTML = `<div class="card">
+      <div class="card-header"><h3>📅 ${new Date(dia.fecha + 'T12:00:00').toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</h3>
+        <select onchange="cursoDia(this.value)" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px">${c.dias.map(d => `<option value="${d.fecha}" ${d.fecha === dia.fecha ? 'selected' : ''}>${_diaLabel(d.fecha)} — ${d.fecha}</option>`).join('')}</select></div>
+      <p style="font-size:12.5px;color:var(--text-mid);margin-bottom:12px">${dia.clases.length} bloque(s) · ${dia.oficial} min oficiales${dia.clases.length ? ' · ' + dia.clases.map(x => escHtml(x.title || '')).join(' / ') : ''}</p>
+      ${docs.length ? `<div style="background:var(--green-50);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;margin-bottom:14px;font-size:13px"><strong>👨‍🏫 Docente${docs.length > 1 ? 's' : ''}:</strong> ${docs.map(x => `${escHtml(x.nombre)} <span style="color:var(--text-mid)">(${x.entrada ? _hm(x.entrada) : '—'} – ${x.salida ? _hm(x.salida) : '—'} · ${x.min} min)</span>`).join(' · ')}</div>` : ''}
+      <div class="table-wrap"><table><thead><tr><th>N°</th><th>Alumno</th><th>RUT</th><th>Estado</th><th>Entrada</th><th>Salida</th><th>Minutos</th><th>% del bloque</th></tr></thead><tbody>
+      ${c.alumnos.map((a, n) => { const x = a.dias[di]; return `<tr>
+        <td>${n + 1}</td><td><strong>${escHtml(a.nombre)}</strong></td><td style="font-family:'DM Mono';font-size:12px">${escHtml(a.rut)}</td>
+        <td><span class="badge ${x.estado === 'P' ? 'badge-green' : x.estado === 'PP' ? 'badge-orange' : 'badge-gray'}">${x.estado === 'P' ? '✔ Presente' : x.estado === 'PP' ? '½ Parcial' : '✕ Ausente'}</span></td>
+        <td style="font-family:'DM Mono';font-size:12px">${x.entrada ? _hm(x.entrada) : '—'}</td><td style="font-family:'DM Mono';font-size:12px">${x.salida ? _hm(x.salida) : '—'}</td>
+        <td style="text-align:center">${x.min || '—'}</td><td style="text-align:center">${x.estado === 'A' ? '—' : x.pct + '%'}</td></tr>`; }).join('')}
+      </tbody></table></div></div>`;
+  } else {
+    const admin = currentRole === 'admin';
+    cont.innerHTML = `<div class="card">
+      <div class="card-header"><h3>🎓 Alumnos del curso (${c.alumnos.length})</h3>${admin ? '<button class="btn btn-primary btn-sm" onclick="abrirMatricula()">➕ Matricular alumnos</button>' : ''}</div>
+      ${c.alumnos.length ? `<div class="table-wrap"><table><thead><tr><th>N°</th><th>Alumno</th><th>RUT</th><th>Condición</th><th>Días presente</th><th>% asist.</th>${admin ? '<th></th>' : ''}</tr></thead><tbody>
+        ${c.alumnos.map((a, n) => `<tr><td>${n + 1}</td><td><strong>${escHtml(a.nombre)}</strong></td><td style="font-family:'DM Mono';font-size:12px">${escHtml(a.rut)}</td>
+          <td>${a.matriculado ? '<span class="badge badge-green">Matriculado</span>' : '<span class="badge badge-orange">Sin matricular</span>'}</td>
+          <td style="text-align:center">${a.P} / ${c.dias.length}</td><td style="text-align:center">${a.pct}%</td>
+          ${admin ? `<td style="text-align:right">${a.matriculado ? `<button class="btn btn-sm btn-secondary" onclick="quitarDeCurso('${a.uid}')">Quitar</button>` : (a.eliminado ? '' : `<button class="btn btn-sm btn-primary" onclick="matricularUno('${a.uid}')">Matricular</button>`)}</td>` : ''}</tr>`).join('')}
+      </tbody></table></div>` : '<div class="empty-state"><div class="icon">🎓</div><p>Aún no hay alumnos en este curso.' + (admin ? ' Usa "Matricular alumnos".' : '') + '</p></div>'}
+    </div>`;
+  }
+}
+
+/* ── Matrícula (solo administrador): se guarda en el campo "cursos" de la ficha del alumno ── */
+function abrirMatricula() {
+  const c = _curso; if (!c) return;
+  const mat = new Set(c.alumnos.filter(a => a.matriculado).map(a => a.uid));
+  openModal(`
+    <h3>➕ Matricular alumnos</h3>
+    <p style="font-size:12.5px;color:var(--text-mid);margin:4px 0 12px">Curso: <strong>${escHtml(c.nombre)}</strong>. Marca los alumnos que pertenecen a este curso; así aparecen en la tabla aunque falten a clases.</p>
+    <input type="text" id="mt_buscar" placeholder="🔎 Buscar alumno o RUT..." oninput="filtrarMatricula()" style="width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;margin-bottom:8px">
+    <label style="font-size:12.5px;display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer"><input type="checkbox" id="mt_todos" onchange="marcarTodosMatricula(this.checked)"> Marcar todos los visibles</label>
+    <div id="mt_lista" style="max-height:48vh;overflow-y:auto;border:1px solid var(--border);border-radius:8px">
+      ${c.todos.map(u => `<label class="mt-fila" data-q="${escHtml(((u.name || '') + ' ' + (u.rut || '')).toLowerCase())}" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #eef4f0;cursor:pointer;font-size:13px"><input type="checkbox" class="mt-chk" value="${u.uid}" ${mat.has(u.uid) ? 'checked' : ''} data-antes="${mat.has(u.uid) ? 1 : 0}"><span style="flex:1">${escHtml(u.name || '—')}</span><span style="font-family:'DM Mono';font-size:11.5px;color:var(--text-light)">${escHtml(u.rut || '')}</span></label>`).join('') || '<div class="empty-state" style="padding:20px"><p>No hay alumnos creados todavía.</p></div>'}
+    </div>
+    <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="guardarMatricula()">💾 Guardar matrícula</button></div>`, true);
+}
+function filtrarMatricula() {
+  const q = (document.getElementById('mt_buscar').value || '').toLowerCase().trim();
+  document.querySelectorAll('.mt-fila').forEach(f => { f.style.display = !q || f.dataset.q.includes(q) ? 'flex' : 'none'; });
+}
+function marcarTodosMatricula(v) { document.querySelectorAll('.mt-fila').forEach(f => { if (f.style.display !== 'none') f.querySelector('.mt-chk').checked = v; }); }
+async function _cambiarMatricula(altas, bajas) {
+  const name = _curso.nombre; const fv = firebase.firestore.FieldValue;
+  const lista = [...altas.map(u => [u, fv.arrayUnion(name)]), ...bajas.map(u => [u, fv.arrayRemove(name)])];
+  for (let i = 0; i < lista.length; i += 400) {
+    const b = db.batch();
+    lista.slice(i, i + 400).forEach(([uid, val]) => b.update(db.collection('users').doc(uid), { cursos: val }));
+    await b.commit();
+  }
+}
+async function guardarMatricula() {
+  const altas = [], bajas = [];
+  document.querySelectorAll('.mt-chk').forEach(ch => { const antes = ch.dataset.antes === '1'; if (ch.checked && !antes) altas.push(ch.value); if (!ch.checked && antes) bajas.push(ch.value); });
+  if (!altas.length && !bajas.length) { closeModal(); return; }
+  try { await _cambiarMatricula(altas, bajas); closeModal(); toast(`✅ Matrícula actualizada (+${altas.length} / −${bajas.length}).`, 'success'); navigate('carpeta-curso', { name: _curso.nombre }); }
+  catch (e) { toast('❌ No se pudo guardar: ' + e.message, 'error', 7000); }
+}
+async function quitarDeCurso(uid) {
+  if (!confirm('¿Quitar a este alumno del curso? Su asistencia histórica se conserva.')) return;
+  try { await _cambiarMatricula([], [uid]); toast('Alumno quitado del curso.', 'success'); navigate('carpeta-curso', { name: _curso.nombre }); } catch (e) { toast('❌ ' + e.message, 'error'); }
+}
+async function matricularUno(uid) {
+  try { await _cambiarMatricula([uid], []); toast('Alumno matriculado.', 'success'); navigate('carpeta-curso', { name: _curso.nombre }); } catch (e) { toast('❌ ' + e.message, 'error'); }
+}
+
+/* ── Excel profesional: Resumen, Matriz, Minutos y una hoja por día ── */
+function exportarCurso() {
+  const c = _curso; if (!c) return;
+  if (typeof XLSX === 'undefined') return toast('No se pudo cargar el generador de Excel. Revisa tu conexión.', 'error');
+  const wb = XLSX.utils.book_new();
+  const ancho = (ws, w) => { ws['!cols'] = w.map(x => ({ wch: x })); };
+  const gen = new Date().toLocaleString('es-CL', { timeZone: 'America/Santiago' });
+
+  const res = [['INASEP — Registro de asistencia por curso'], ['Curso', c.nombre], ['Generado', gen], ['Clases realizadas', c.iniciadas.length], ['Días de clase', c.dias.length], ['Alumnos', c.alumnos.length],
+    ['Criterio de presente', `≥ ${UMBRAL_ASIST}% del bloque oficial (parcial: menos)`], [],
+    ['N°', 'Alumno', 'RUT', 'Días presente', 'Parciales', 'Ausencias', '% asistencia', 'Minutos totales', `% de minutos`, `Condición (${UMBRAL_ASIST}%)`]];
+  c.alumnos.forEach((a, i) => res.push([i + 1, a.nombre, a.rut, a.P, a.PP, a.A, a.pct / 100, a.minTotal, a.pctMin / 100, a.pct >= UMBRAL_ASIST ? 'Sobre el mínimo' : 'Bajo el mínimo']));
+  const wsR = XLSX.utils.aoa_to_sheet(res); ancho(wsR, [6, 36, 14, 14, 11, 11, 13, 15, 12, 18]);
+  const fp = (ws, col, r0, r1) => { for (let r = r0; r <= r1; r++) { const ref = XLSX.utils.encode_cell({ r, c: col }); if (ws[ref]) ws[ref].z = '0%'; } };
+  fp(wsR, 6, 9, 9 + c.alumnos.length); fp(wsR, 8, 9, 9 + c.alumnos.length);
+  XLSX.utils.book_append_sheet(wb, wsR, 'Resumen');
+
+  const cab = ['N°', 'Alumno', 'RUT', ...c.dias.map(d => d.fecha)];
+  const mx = [cab.concat(['Presente', 'Parcial', 'Ausente', '% asistencia'])];
+  c.alumnos.forEach((a, i) => mx.push([i + 1, a.nombre, a.rut, ...a.dias.map(x => x.estado), a.P, a.PP, a.A, a.pct / 100]));
+  mx.push([], ['', 'P = presente (≥ ' + UMBRAL_ASIST + '% del bloque) · PP = parcial · A = ausente']);
+  const wsM = XLSX.utils.aoa_to_sheet(mx); ancho(wsM, [6, 36, 14, ...c.dias.map(() => 12), 10, 9, 9, 13]);
+  fp(wsM, 3 + c.dias.length + 3, 1, c.alumnos.length);
+  XLSX.utils.book_append_sheet(wb, wsM, 'Matriz');
+
+  const mm = [cab.concat(['Total min'])];
+  c.alumnos.forEach((a, i) => mm.push([i + 1, a.nombre, a.rut, ...a.dias.map(x => x.min), a.minTotal]));
+  mm.push(['', 'Minutos oficiales del bloque', '', ...c.dias.map(d => d.oficial), c.totalOficial]);
+  const wsMin = XLSX.utils.aoa_to_sheet(mm); ancho(wsMin, [6, 36, 14, ...c.dias.map(() => 12), 11]);
+  XLSX.utils.book_append_sheet(wb, wsMin, 'Minutos');
+
+  c.dias.forEach((d, di) => {
+    const docs = c.docentes.filter(x => x.dia === d.fecha);
+    const rows = [[`${c.nombre} — ${d.fecha}`], ['Bloques', d.clases.map(x => x.title || '').join(' / ')], ['Minutos oficiales', d.oficial]];
+    docs.forEach(x => rows.push(['Docente', x.nombre, 'Entrada', x.entrada ? _hm(x.entrada) : '', 'Salida', x.salida ? _hm(x.salida) : '', 'Minutos', x.min]));
+    rows.push([], ['N°', 'Alumno', 'RUT', 'Estado', 'Entrada', 'Salida', 'Minutos', '% del bloque']);
+    c.alumnos.forEach((a, i) => { const x = a.dias[di]; rows.push([i + 1, a.nombre, a.rut, x.estado === 'P' ? 'Presente' : x.estado === 'PP' ? 'Parcial' : 'Ausente', x.entrada ? _hm(x.entrada) : '', x.salida ? _hm(x.salida) : '', x.min, x.estado === 'A' ? '' : x.pct / 100]); });
+    const ws = XLSX.utils.aoa_to_sheet(rows); ancho(ws, [6, 36, 14, 12, 10, 10, 10, 13]);
+    fp(ws, 7, 5 + docs.length, 5 + docs.length + c.alumnos.length);
+    XLSX.utils.book_append_sheet(wb, ws, ('Día ' + d.fecha).slice(0, 31));
+  });
+  XLSX.writeFile(wb, `Asistencia_${slugTxt(c.nombre).slice(0, 50) || 'curso'}_${todayStr()}.xlsx`);
+  toast('📥 Excel generado.', 'success');
+}
+
+/* ════════════════════════════════════════════════
+   LIBRO DE CLASES — firma de salida y contenidos
+   Al salir de la sala (o finalizar la clase) se le pide al profesor registrar los contenidos y firmar su salida.
+════════════════════════════════════════════════ */
+let _libroAlTerminar = null;
+async function _libroDeClase(classId) {
+  const sn = await db.collection('libroClases').where('classId','==',classId).limit(1).get();
+  return sn.empty ? null : { id: sn.docs[0].id, ...sn.docs[0].data() };
+}
+async function _libroFirmado(classId) {
+  try { const l = await _libroDeClase(classId); return !!(l && l.firmaDocente && l.firmaDocente.firmado); } catch (e) { return true; }   // si no se puede consultar, no se bloquea la salida
+}
+async function _docenteEstuvoEnClase(classId) {
+  try { const sn = await db.collection('attendance').where('classId','==',classId).where('userId','==',currentUser.uid).limit(1).get(); return !sn.empty; } catch (e) { return false; }
+}
+async function guardarFirmaLibro(classId, materia) {
+  try {
+    const doc = await db.collection('liveClasses').doc(classId).get();
+    const cls = doc.data() || {};
+    const prev = await _libroDeClase(classId);
+    const attSnap = await db.collection('attendance').where('classId','==',classId).get();
+    const asistentes = attSnap.docs.filter(d => { const a = d.data(); return a.present && a.userRole === 'student'; }).length;
+    const ahora = firebase.firestore.Timestamp.now();
+    const payload = {
+      classId, curso: cls.courseName || '', titulo: cls.title || '', fecha: cls.scheduledAt || ahora, modalidad: 'online',
+      horaInicio: cls.bloqueIniciadoAt || null, horaCierre: cls.bloqueCerradoAt || ahora,
+      materiaTratada: materia, asistentesCount: asistentes,
+      firmaDocente: { firmado: true, uid: currentUser.uid, nombre: currentUser.displayName || currentUser.email, fecha: ahora },
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    if (prev) await db.collection('libroClases').doc(prev.id).update(payload);
+    else { payload.createdAt = firebase.firestore.FieldValue.serverTimestamp(); await db.collection('libroClases').add(payload); }
+    return true;
+  } catch (e) { toast('❌ Error al firmar: ' + e.message, 'error'); return false; }
+}
+async function pedirFirmaLibro(classId, alTerminar) {
+  _libroAlTerminar = alTerminar || null;
+  let cls = {}, prev = null;
+  try {
+    const d = await db.collection('liveClasses').doc(classId).get(); cls = d.exists ? d.data() : {};
+    prev = await _libroDeClase(classId);
+  } catch (e) {}
+  openModal(`
+    <h3>📖 Libro de Clases — firma de salida</h3>
+    <p style="font-size:13px;color:var(--text-mid);line-height:1.6;margin:6px 0 14px">Antes de salir, registra los contenidos de <strong>${escHtml(cls.title || 'la clase')}</strong>${cls.courseName ? ' (' + escHtml(cls.courseName) + ')' : ''} y firma tu salida. Queda con tu nombre y la hora exacta de la firma, y OS10 puede revisarlo.</p>
+    <div class="form-group"><label>Contenidos / materia tratada *</label><textarea id="fm_materia" rows="5" placeholder="Ej: Marco legal Ley N° 21.659, funciones del guardia OS10...">${escHtml(prev?.materiaTratada || '')}</textarea></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="omitirFirmaLibro()">Firmar después</button>
+      <button class="btn btn-primary" onclick="confirmarFirmaLibro('${classId}')">✍️ Firmar salida</button>
+    </div>`);
+  const ov = document.querySelector('#modalContainer .modal-overlay'); if (ov) ov.removeAttribute('onclick');   // no se cierra tocando fuera
+}
+function omitirFirmaLibro() {
+  closeModal(); toast('Recuerda firmar el Libro de Clases: queda como pendiente.', 'warning', 6000);
+  const cb = _libroAlTerminar; _libroAlTerminar = null; if (cb) cb();
+}
+async function confirmarFirmaLibro(classId) {
+  const ta = document.getElementById('fm_materia');
+  const materia = ta ? ta.value.trim() : '';
+  if (!materia) return toast('⚠️ Describe los contenidos tratados antes de firmar.', 'warning');
+  if (await guardarFirmaLibro(classId, materia)) {
+    closeModal(); toast('✅ Salida firmada en el Libro de Clases.', 'success');
+    const cb = _libroAlTerminar; _libroAlTerminar = null; if (cb) cb();
+  }
 }
 async function firmarLibroClase(classId) {
   const materia = document.getElementById('fc_materiaTratada').value.trim();
   if (!materia) return toast('⚠️ Describe la materia tratada antes de firmar.', 'warning');
   if (!confirm('¿Confirmas firmar el Libro de Clases con esta materia tratada? Quedará registrado con tu nombre y fecha/hora.')) return;
-  try {
-    const doc = await db.collection('liveClasses').doc(classId).get();
-    const cls = doc.data();
-    const snap = await db.collection('libroClases').where('classId','==',classId).limit(1).get();
-    const attSnap = await db.collection('attendance').where('classId','==',classId).get();
-    const asistentes = attSnap.docs.filter(d => { const a = d.data(); return a.present && a.userRole === 'student'; }).length;
-    const payload = {
-      classId, curso: cls.courseName || '', fecha: cls.scheduledAt, modalidad: 'online',
-      materiaTratada: materia, asistentesCount: asistentes,
-      firmaDocente: { firmado: true, uid: currentUser.uid, nombre: currentUser.displayName || currentUser.email, fecha: firebase.firestore.Timestamp.now() },
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    };
-    if (!snap.empty) await db.collection('libroClases').doc(snap.docs[0].id).update(payload);
-    else { payload.createdAt = firebase.firestore.FieldValue.serverTimestamp(); await db.collection('libroClases').add(payload); }
-    toast('✅ Libro de Clases actualizado y firmado.', 'success');
-    cargarEstadoLibroClase(classId);
-  } catch (e) { toast('❌ Error al firmar: ' + e.message, 'error'); }
+  if (await guardarFirmaLibro(classId, materia)) { toast('✅ Libro de Clases actualizado y firmado.', 'success'); cargarEstadoLibroClase(classId); }
 }
+
+let _libroDocs = [];
 async function renderLibroClases(mc) {
+  const staff = currentRole === 'teacher' || currentRole === 'admin';
   mc.innerHTML = `
     <div class="page-header">
-      <div><h2>📖 Libro de Clases Electrónico</h2><div class="breadcrumb">Registro de materia tratada y firma docente por sesión</div></div>
+      <div><h2>📖 Libro de Clases Electrónico</h2><div class="breadcrumb">Contenidos tratados y firma de salida del docente, por sesión</div></div>
       <button class="btn btn-secondary" onclick="exportLibroClases()">📥 Exportar CSV</button>
     </div>
+    <div id="libroPend"></div>
     <div id="libroClasesList"><div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div></div>`;
   try {
-    const snap = await db.collection('libroClases').orderBy('fecha','desc').limit(200).get();
-    const cont = document.getElementById('libroClasesList');
-    if (snap.empty) { cont.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>Aún no hay registros. Se crean cuando el profesor firma al cerrar cada clase.</p></div>'; return; }
-    cont.innerHTML = `<div class="card"><div class="table-wrap"><table>
-      <thead><tr><th>Fecha</th><th>Curso</th><th>Materia tratada</th><th>Docente</th><th>Asistentes</th><th>Firma</th></tr></thead>
-      <tbody>${snap.docs.map(d => { const l = d.data(); return `<tr>
-        <td style="font-size:12px;white-space:nowrap">${fmtDate(l.fecha)}</td>
-        <td>${escHtml(l.curso||'—')}</td>
-        <td style="max-width:300px;font-size:12.5px">${escHtml(l.materiaTratada||'—')}</td>
-        <td style="font-size:12.5px">${escHtml(l.firmaDocente?.nombre||'—')}</td>
-        <td style="text-align:center">${l.asistentesCount ?? '—'}</td>
-        <td>${l.firmaDocente?.firmado ? '<span class="badge badge-green">✅ Firmado</span>' : '<span class="badge badge-gray">⏳ Pendiente</span>'}</td>
-      </tr>`; }).join('')}</tbody></table></div></div>`;
+    const snap = await db.collection('libroClases').orderBy('fecha','desc').limit(300).get();
+    _libroDocs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (currentRole === 'teacher') _libroDocs = _libroDocs.filter(l => !l.firmaDocente || l.firmaDocente.uid === currentUser.uid);
+    if (staff) {
+      try {
+        const fin = await db.collection('liveClasses').where('status','==','finished').get();
+        const firmadas = new Set(_libroDocs.filter(l => l.firmaDocente?.firmado).map(l => l.classId));
+        const uid = currentUser.uid;
+        const pend = fin.docs.map(d => ({ id: d.id, ...d.data() }))
+          .filter(c => !firmadas.has(c.id))
+          .filter(c => currentRole === 'admin' || (Array.isArray(c.profesoresUids) && c.profesoresUids.includes(uid)) || c.profesorUid === uid || c.teacherUid === uid)
+          .sort((a, b) => (_toD(b.scheduledAt) || 0) - (_toD(a.scheduledAt) || 0)).slice(0, 15);
+        if (pend.length) document.getElementById('libroPend').innerHTML = `
+          <div class="card" style="border-left:4px solid var(--warning);margin-bottom:16px">
+            <div class="card-header"><h3>⚠️ Pendientes de firma (${pend.length})</h3></div>
+            <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Curso</th><th>Clase</th><th></th></tr></thead><tbody>
+            ${pend.map(c => `<tr><td style="font-size:12px;white-space:nowrap">${fmtDate(c.scheduledAt)}</td><td>${escHtml(c.courseName || '—')}</td><td>${escHtml(c.title || '—')}</td>
+              <td style="text-align:right"><button class="btn btn-sm btn-primary" onclick="pedirFirmaLibro('${c.id}', () => navigate('libro-clases'))">✍️ Firmar ahora</button></td></tr>`).join('')}
+            </tbody></table></div>
+          </div>`;
+      } catch (e) { /* los pendientes son informativos */ }
+    }
+    pintarLibro();
   } catch (e) { document.getElementById('libroClasesList').innerHTML = `<div class="empty-state"><div class="icon">❌</div><p>${escHtml(e.message)}</p></div>`; }
 }
+function pintarLibro() {
+  const cont = document.getElementById('libroClasesList'); if (!cont) return;
+  const fil = (document.getElementById('libroFiltro') || {}).value || '';
+  const cursos = [...new Set(_libroDocs.map(l => l.curso || '—'))].sort((a, b) => a.localeCompare(b, 'es'));
+  const filas = _libroDocs.filter(l => !fil || (l.curso || '—') === fil);
+  if (!_libroDocs.length) { cont.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>Aún no hay registros. Se crean cuando el profesor firma su salida de cada clase.</p></div>'; return; }
+  cont.innerHTML = `<div class="card">
+    <div class="card-header"><h3>Registros firmados</h3>
+      <select id="libroFiltro" onchange="pintarLibro()" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px">
+        <option value="">Todos los cursos</option>${cursos.map(c => `<option value="${escHtml(c)}" ${c === fil ? 'selected' : ''}>${escHtml(c)}</option>`).join('')}
+      </select></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Fecha</th><th>Curso</th><th>Clase</th><th>Inicio – Cierre</th><th>Contenidos tratados</th><th>Docente</th><th>Asist.</th><th>Firma de salida</th></tr></thead>
+      <tbody>${filas.map(l => `<tr>
+        <td style="font-size:12px;white-space:nowrap">${fmtDate(l.fecha)}</td>
+        <td style="font-size:12.5px">${escHtml(l.curso || '—')}</td>
+        <td style="font-size:12.5px">${escHtml(l.titulo || '—')}</td>
+        <td style="font-size:12px;white-space:nowrap;font-family:'DM Mono'">${l.horaInicio ? _hm(l.horaInicio) : '—'} – ${l.horaCierre ? _hm(l.horaCierre) : '—'}</td>
+        <td style="max-width:320px;font-size:12.5px">${escHtml(l.materiaTratada || '—')}</td>
+        <td style="font-size:12.5px">${escHtml(l.firmaDocente?.nombre || '—')}</td>
+        <td style="text-align:center">${l.asistentesCount ?? '—'}</td>
+        <td>${l.firmaDocente?.firmado ? `<span class="badge badge-green">✅ ${fmtDateTime(l.firmaDocente.fecha)}</span>` : '<span class="badge badge-gray">⏳ Pendiente</span>'}</td>
+      </tr>`).join('')}</tbody></table></div></div>`;
+}
+
 async function exportLibroClases() {
   const snap = await db.collection('libroClases').orderBy('fecha','desc').get();
   const rows = [['Fecha','Curso','Modalidad','Materia Tratada','Docente','Asistentes','Firmado','Fecha Firma']];
