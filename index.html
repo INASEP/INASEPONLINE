@@ -1390,7 +1390,7 @@ function startHeartbeat(classId) {
     workerFetch('/api/asistencia/latido', { method: 'POST', body: JSON.stringify({ classId: _currentClassId }) })
       .then(async (r) => { if (r.status === 403) { const j = await r.json().catch(() => ({})); if (j.revocado) _accesoRevocado(j); } })
       .catch(() => {});
-  }, 300000);
+  }, 300000);   // cada 5 min; los minutos se suman en cada latido (ver Worker) y al salir se cierra el tramo
 }
 async function stopHeartbeat() {
   if (_heartbeatTimer) { clearInterval(_heartbeatTimer); _heartbeatTimer = null; }
@@ -1737,7 +1737,6 @@ function updateSidebar() {
     { label:'📖 Libro de Clases',     view:'fisc-libro'       },
   ] : [
     { label:'🏠 Mis Cursos',      view:'my-courses'       },
-    { label:'📹 Clases en Vivo',  view:'live-classes'     },
     { label:'📋 Mi Asistencia',   view:'my-attendance'    },
     { label:'🗓️ Horario',         view:'schedule-view'    },
   ];
@@ -1876,7 +1875,8 @@ async function renderAdminDashboard(mc) {
     const usersSnap = await db.collection('users').get().catch(()=>({size:0,docs:[],empty:true}));
     const attSnap   = await db.collection('attendance').where('date','==',todayStr()).get().catch(()=>({size:0,docs:[],empty:true}));
 
-    const totalClasses  = classSnap.size;
+    const _cursosIds = new Set(classSnap.docs.map(d => d.data().cursoId).filter(Boolean));
+    const totalClasses  = _cursosIds.size + classSnap.docs.filter(d => !d.data().cursoId).length;   // un curso cuenta como uno
     const activeClasses = classSnap.docs.filter(d=>d.data().status==='active').length;
     const totalAlumnos  = usersSnap.docs.filter(d=>d.data().role==='student').length;
     const totalProfes   = usersSnap.docs.filter(d=>d.data().role==='teacher').length;
@@ -1888,7 +1888,7 @@ async function renderAdminDashboard(mc) {
         <button class="btn btn-primary" onclick="navigate('new-class')">➕ Nueva Clase</button>
       </div>
       <div class="stats-grid">
-        <div class="stat-card"><div class="stat-icon">📹</div><div class="stat-value">${totalClasses}</div><div class="stat-label">Total Clases</div></div>
+        <div class="stat-card"><div class="stat-icon">📹</div><div class="stat-value">${totalClasses}</div><div class="stat-label">Cursos y clases</div></div>
         <div class="stat-card"><div class="stat-icon">🔴</div><div class="stat-value">${activeClasses}</div><div class="stat-label">Clases Activas</div></div>
         <div class="stat-card"><div class="stat-icon">🎓</div><div class="stat-value">${totalAlumnos}</div><div class="stat-label">Alumnos</div></div>
         <div class="stat-card"><div class="stat-icon">👨‍🏫</div><div class="stat-value">${totalProfes}</div><div class="stat-label">Profesores</div></div>
@@ -1907,23 +1907,33 @@ async function renderAdminDashboard(mc) {
         <div id="todayAttendance"><div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div></div>
       </div>`;
 
-    // Clases recientes
-    const recentSnap = await db.collection('liveClasses').limit(20).get();
+    // Cursos y clases recientes (un curso = una fila)
     const rc = document.getElementById('recentClasses');
-    if (recentSnap.empty) { rc.innerHTML='<div class="empty-state"><div class="icon">📭</div><p>No hay clases creadas aún.</p></div>'; }
+    const todas = classSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (!todas.length) { rc.innerHTML='<div class="empty-state"><div class="icon">📭</div><p>No hay clases creadas aún.</p></div>'; }
     else {
+      const est = {}; try { (await db.collection('cursos').get()).docs.forEach(d => { est[d.id] = d.data().estado || 'activo'; }); } catch (e) {}
+      const hoy = _diaChile(new Date()); const gr = {};
+      todas.filter(c => c.cursoId).forEach(c => { (gr[c.cursoId] = gr[c.cursoId] || []).push(c); });
+      const filasCurso = Object.entries(gr).map(([id, L]) => {
+        L.sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+        const sel = L.find(c => c.status === 'active') || L.find(c => c.fecha === hoy) || L.find(c => c.fecha > hoy) || L[L.length - 1];
+        const st = _ramoAhora(sel); const b = st && (st.actual || st.sig);
+        const live = L.some(c => c.status === 'active'), cerr = est[id] === 'cerrado';
+        return { orden: L[L.length - 1].fecha || '', html: `<tr>
+          <td><strong>🎓 ${escHtml(L[0].courseName || L[0].title)}</strong><div style="font-size:11.5px;color:var(--text-mid)">${b ? escHtml((st.actual ? 'Ahora: ' : 'Sigue: ') + b.ramo) : ''}</div></td>
+          <td style="font-size:12px">${escHtml(L[0].fecha || '')} → ${escHtml(L[L.length - 1].fecha || '')}</td>
+          <td>${L.length} día${L.length === 1 ? '' : 's'}</td>
+          <td><span class="badge ${cerr ? 'badge-gray' : live ? 'badge-live' : 'badge-blue'}">${cerr ? '🔒 Cerrado' : live ? '🔴 En Vivo' : '📅 Activo'}</span></td>
+          <td><button class="btn btn-sm btn-secondary" onclick="navigate('live-classes')">Abrir</button></td></tr>` };
+      });
+      const filasSueltas = todas.filter(c => !c.cursoId).slice(0, 10).map(c => { const isLive = c.status === 'active'; return { orden: '', html: `<tr>
+          <td><strong>${escHtml(c.title)}</strong></td><td style="font-size:12px">${fmtDateTime(c.scheduledAt)}</td><td>${c.duration||60} min</td>
+          <td><span class="badge ${isLive?'badge-live':c.status==='finished'?'badge-gray':'badge-blue'}">${isLive?'🔴 En Vivo':c.status==='finished'?'✅ Finalizada':'📅 Programada'}</span></td>
+          <td><button class="btn btn-sm btn-secondary" onclick="navigate('teacher-room',{id:'${c.id}'})">Entrar</button></td></tr>` }; });
       rc.innerHTML = `<div class="table-wrap"><table>
-        <thead><tr><th>Título</th><th>Fecha</th><th>Duración</th><th>Estado</th><th></th></tr></thead>
-        <tbody>${recentSnap.docs.map(d=>{
-          const c=d.data(); const isLive=c.status==='active';
-          return `<tr>
-            <td><strong>${escHtml(c.title)}</strong></td>
-            <td style="font-size:12px">${fmtDateTime(c.scheduledAt)}</td>
-            <td>${c.duration||60} min</td>
-            <td><span class="badge ${isLive?'badge-live':c.status==='finished'?'badge-gray':'badge-blue'}">${isLive?'🔴 En Vivo':c.status==='finished'?'✅ Finalizada':'📅 Programada'}</span></td>
-            <td><button class="btn btn-sm btn-secondary" onclick="navigate('teacher-room',{id:'${d.id}'})">Entrar</button></td>
-          </tr>`;}).join('')}
-        </tbody></table></div>`;
+        <thead><tr><th>Curso / clase</th><th>Fechas</th><th>Duración</th><th>Estado</th><th></th></tr></thead>
+        <tbody>${filasCurso.sort((a, b) => b.orden.localeCompare(a.orden)).concat(filasSueltas).map(f => f.html).join('')}</tbody></table></div>`;
     }
 
     // Asistencia hoy
@@ -1954,6 +1964,11 @@ async function renderAdminDashboard(mc) {
    VISTA: CLASES EN VIVO (todos los roles)
 ════════════════════════════════════════════════ */
 let _cursosCache = {};
+const _etiquetaClase = (c) => c.cursoId ? `${c.courseName || c.title} — ${(c.fecha || '').split('-').reverse().join('-')}` : (c.title || '');
+async function _misClasesDocente() {
+  const [a, b] = await Promise.all([db.collection('liveClasses').where('teacherUid','==',currentUser.uid).get(), db.collection('liveClasses').where('profesoresUids','array-contains',currentUser.uid).get().catch(() => ({ docs: [] }))]);
+  const m = new Map(); a.docs.concat(b.docs).forEach(d => m.set(d.id, d)); return { docs: [...m.values()] };
+}
 function _tarjetaClaseSuelta(doc, isAdmin, isTeacher) {
   const c = doc.data(); const isLive = c.status==='active'; const isDone = c.status==='finished';
   return `
@@ -2067,12 +2082,12 @@ async function _cursoCerrado(cls) {
   try { const d = await db.collection('cursos').doc(cls.cursoId).get(); return d.exists && d.data().estado === 'cerrado'; } catch (e) { return false; }
 }
 const _msgCursoCerrado = '<div class="empty-state"><div class="icon">🔒</div><p>Este curso ya finalizó. Gracias por participar.</p></div>';
-async function renderLiveClasses(mc) {
+async function renderLiveClasses(mc, opts = {}) {
   const isAdmin   = currentRole==='admin';
   const isTeacher = currentRole==='teacher';
   mc.innerHTML = `
     <div class="page-header">
-      <div><h2>${isTeacher ? '📹 Mi Curso Activo' : '📹 Clases en Vivo'}</h2><div class="breadcrumb">${isAdmin ? 'Cursos y clases' : 'Tu acceso a clases'}</div></div>
+      <div><h2>${opts.titulo || (isTeacher ? '📹 Mi Curso Activo' : '📹 Clases en Vivo')}</h2><div class="breadcrumb">${isAdmin ? 'Cursos y clases' : 'Tu acceso a clases'}</div></div>
       ${isAdmin ? '<button class="btn btn-primary" onclick="navigate(\'nuevo-curso\')">📥 Nuevo Curso (Excel)</button>' : ''}
     </div>
     <div id="classesContainer"><div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div></div>`;
@@ -2090,7 +2105,7 @@ async function renderLiveClasses(mc) {
         if (!isAdmin && !isTeacher && !matricula.includes(c.courseName)) return;            // el alumno solo ve los cursos en que está matriculado
         if (!isAdmin && estados[c.cursoId] === 'cerrado') return;                           // curso cerrado: sin acceso (solo el admin lo ve)
         (grupos[c.cursoId] = grupos[c.cursoId] || []).push(c);
-      } else sueltas.push(d);
+      } else if (isAdmin || isTeacher || d.data().status !== 'finished') sueltas.push(d);   // el alumno no ve clases sueltas ya terminadas
     });
     _cursosCache = {};
     const ordenados = Object.entries(grupos).map(([id, L]) => [id, L.sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''))])
@@ -2545,7 +2560,7 @@ function cargarAlumnosRT(classId) {
       const isOnline = (a) => {
         const ud = usersData[a.userId]||{};
         const ls = ud.lastSeen?.toDate?.();
-        return ls && (now - ls.getTime()) < 420000 && ud.lastClassId === classId; // 7 min umbral (heartbeat cada 5 min)
+        return ls && (now - ls.getTime()) < 420000 && ud.lastClassId === classId; // 7 min umbral (latido cada 5 min)
       };
 
       const rowHtml = (a) => {
@@ -2608,43 +2623,7 @@ async function salirDeSala(classId) {
 /* ════════════════════════════════════════════════
    VISTA: MIS CURSOS (ALUMNO)
 ════════════════════════════════════════════════ */
-async function renderMyCourses(mc) {
-  mc.innerHTML = `
-    <div class="page-header"><div><h2>🏠 Mis Cursos</h2><div class="breadcrumb">Clases disponibles para ti</div></div></div>
-    <div id="myCoursesContainer"><div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div></div>`;
-
-  try {
-    const snap = await db.collection('liveClasses').get();
-    const cont = document.getElementById('myCoursesContainer');
-    if (snap.empty) { cont.innerHTML='<div class="empty-state"><div class="icon">📭</div><p>No hay clases disponibles.</p></div>'; return; }
-    cont.innerHTML = snap.docs.filter(d=>d.data().status!=='finished').map(doc => {
-      const c=doc.data(); const isLive=c.status==='active';
-      return `
-        <div class="live-class-card">
-          <div class="live-class-header">
-            <h4>${escHtml(c.title)}</h4>
-            ${isLive ? '<span class="badge badge-live">🔴 EN VIVO AHORA</span>' : '<span class="badge badge-blue">📅 Programada</span>'}
-          </div>
-          <div class="live-class-body">
-            <div class="live-class-meta">
-              <span>📅 ${fmtDateTime(c.scheduledAt)}</span>
-              <span>⏱ ${c.duration||60} min</span>
-              ${c.courseName?`<span>🎓 ${escHtml(c.courseName)}</span>`:''}
-              ${c.teacherName?`<span>👨‍🏫 ${escHtml(c.teacherName)}</span>`:''}
-            </div>
-            ${c.description?`<p style="font-size:13px;color:var(--text-mid);margin-bottom:12px">${escHtml(c.description)}</p>`:''}
-            <div class="live-class-actions">
-              <button class="btn ${isLive?'btn-live':'btn-primary'}" onclick="navigate('class-room',{id:'${doc.id}'})">
-                ${isLive?'🔴 Entrar a Clase EN VIVO':'👁️ Ver Clase'}
-              </button>
-            </div>
-          </div>
-        </div>`;
-    }).join('') || '<div class="empty-state"><div class="icon">📭</div><p>No hay clases activas por ahora.</p></div>';
-  } catch(e) {
-    document.getElementById('myCoursesContainer').innerHTML=`<div class="empty-state"><div class="icon">❌</div><p>${e.message}</p></div>`;
-  }
-}
+async function renderMyCourses(mc) { return renderLiveClasses(mc, { titulo: '🏠 Mis Cursos' }); }
 
 /* ════════════════════════════════════════════════
    VISTA: MI ASISTENCIA (ALUMNO)
@@ -2744,7 +2723,7 @@ async function renderAttendance(mc) {
   if (sel) classSnap.docs.forEach(d => {
     const opt = document.createElement('option');
     opt.value = d.id;
-    opt.textContent = d.data().title||d.id;
+    opt.textContent = (_etiquetaClase(d.data())||d.id);
     sel.appendChild(opt);
   });
 
@@ -2850,7 +2829,7 @@ async function renderTeacherAttendance(mc) {
 
   try {
     // Clases del profesor
-    const clsSnap = await db.collection('liveClasses').where('teacherUid','==',currentUser.uid).get();
+    const clsSnap = await _misClasesDocente();
     const myClassIds = clsSnap.docs.map(d=>d.id);
     const cont = document.getElementById('teacherAttToday');
 
@@ -2883,7 +2862,7 @@ async function renderTeacherAttendance(mc) {
 ════════════════════════════════════════════════ */
 async function renderReports(mc) {
   const classSnap = await db.collection('liveClasses').get();
-  const classOptions = classSnap.docs.map(d=>`<option value="${d.id}">${escHtml(d.data().title||d.id)}</option>`).join('');
+  const classOptions = classSnap.docs.map(d=>`<option value="${d.id}">${escHtml((_etiquetaClase(d.data())||d.id))}</option>`).join('');
 
   mc.innerHTML = `
     <div class="page-header">
@@ -3144,7 +3123,7 @@ async function exportTeacherReport() {
 
   try {
     toast('⏳ Generando reporte...','info',3000);
-    const clsSnap = await db.collection('liveClasses').where('teacherUid','==',currentUser.uid).get();
+    const clsSnap = await _misClasesDocente();
     const myIds   = clsSnap.docs.map(d=>d.id);
     if (!myIds.length) return toast('⚠️ No tienes clases asignadas.','warning');
 
@@ -4249,7 +4228,7 @@ async function renderFiscAsistencia(mc) {
     return tb-ta;
   }).forEach(d=>{
     const opt=document.createElement('option');
-    opt.value=d.id; opt.textContent=d.data().title||d.id; sel.appendChild(opt);
+    opt.value=d.id; opt.textContent=(_etiquetaClase(d.data())||d.id); sel.appendChild(opt);
   });
   cargarFiscAsistencia();
 }
@@ -4326,7 +4305,7 @@ async function renderFiscReportes(mc) {
     const ta=a.data().scheduledAt?.toDate?.()?.getTime()||0;
     const tb=b.data().scheduledAt?.toDate?.()?.getTime()||0;
     return tb-ta;
-  }).map(d=>`<option value="${d.id}">${escHtml(d.data().title||d.id)}</option>`).join('');
+  }).map(d=>`<option value="${d.id}">${escHtml((_etiquetaClase(d.data())||d.id))}</option>`).join('');
 
   mc.innerHTML = `
     <div class="page-header">
@@ -4474,7 +4453,7 @@ async function exportFiscReporte() {
     const mc2=(r.totalMinCurso||0)%60;
     const hStr=r.totalMinCurso?(hc>0?hc+'h '+mc2+'min':mc2+' min'):'—';
     return [r.nombre, r.rut, dates.length, r.total, r.pct+'%',
-      r.totalMinCurso||0, hStr, r.pct>=75?'✅ Aprobado':'⚠️ En Riesgo'];
+      r.totalMinCurso||0, hStr, r.pct>=UMBRAL_ASIST?'✅ Aprobado':'⚠️ En Riesgo'];
   });
   const ws2 = XLSX.utils.aoa_to_sheet([hdr2,...data2]);
   ws2['!cols'] = [{wch:30},{wch:14},{wch:12},{wch:14},{wch:14},{wch:16},{wch:12},{wch:14}];
@@ -5071,7 +5050,7 @@ async function cargarEstadoLibroClase(classId) {
 /* ════════════════════════════════════════════════
    CARPETAS DE CURSOS — una carpeta por curso, con la asistencia diaria de cada alumno (tabla alumnos × días) y exportación a Excel
 ════════════════════════════════════════════════ */
-const UMBRAL_ASIST = 75;           // % del bloque oficial para contar el día como presente completo
+const UMBRAL_ASIST = 80;           // % del bloque oficial para contar el día como presente completo
 const SIN_CURSO = 'Sin curso asignado';
 let _carpetas = [], _curso = null, _cursoTab = 'matriz', _cursoDia = '';
 
@@ -5297,12 +5276,12 @@ function pintarCurso() {
         <select onchange="cursoDia(this.value)" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px">${c.dias.map(d => `<option value="${d.fecha}" ${d.fecha === dia.fecha ? 'selected' : ''}>${_diaLabel(d.fecha)} — ${d.fecha}</option>`).join('')}</select></div>
       <p style="font-size:12.5px;color:var(--text-mid);margin-bottom:12px">${dia.clases.length} bloque(s) · ${dia.oficial} min oficiales${dia.clases.length ? ' · ' + dia.clases.map(x => escHtml(x.title || '')).join(' / ') : ''}</p>
       ${docs.length ? `<div style="background:var(--green-50);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;margin-bottom:14px;font-size:13px"><strong>👨‍🏫 Docente${docs.length > 1 ? 's' : ''}:</strong> ${docs.map(x => `${escHtml(x.nombre)} <span style="color:var(--text-mid)">(${x.entrada ? _hm(x.entrada) : '—'} – ${x.salida ? _hm(x.salida) : '—'} · ${x.min} min)</span>`).join(' · ')}</div>` : ''}
-      <div class="table-wrap"><table><thead><tr><th>N°</th><th>Alumno</th><th>RUT</th><th>Estado</th><th>Entrada</th><th>Salida</th><th>Minutos</th><th>% del bloque</th></tr></thead><tbody>
+      <div class="table-wrap"><table><thead><tr><th>N°</th><th>Alumno</th><th>RUT</th><th>Estado</th><th>Entrada</th><th>Salida</th><th>Min. conectado / clase abierta</th><th>% de asistencia</th></tr></thead><tbody>
       ${c.alumnos.map((a, n) => { const x = a.dias[di]; return `<tr>
         <td>${n + 1}</td><td><strong>${escHtml(a.nombre)}</strong></td><td style="font-family:'DM Mono';font-size:12px">${escHtml(a.rut)}</td>
         <td><span class="badge ${x.estado === 'P' ? 'badge-green' : x.estado === 'PP' ? 'badge-orange' : 'badge-gray'}">${x.estado === 'P' ? '✔ Presente' : x.estado === 'PP' ? '½ Parcial' : '✕ Ausente'}</span></td>
         <td style="font-family:'DM Mono';font-size:12px">${x.entrada ? _hm(x.entrada) : '—'}</td><td style="font-family:'DM Mono';font-size:12px">${x.salida ? _hm(x.salida) : '—'}</td>
-        <td style="text-align:center">${x.min || '—'}</td><td style="text-align:center">${x.estado === 'A' ? '—' : x.pct + '%'}</td></tr>`; }).join('')}
+        <td style="text-align:center">${x.min ? x.min + ' / ' + dia.oficial + ' min' : '—'}</td><td style="text-align:center">${x.estado === 'A' ? '—' : x.pct + '%'}</td></tr>`; }).join('')}
       </tbody></table></div></div>`;
   } else if (_cursoTab === 'ramos') {
     const h = (m) => (Math.round(m / 60 * 10) / 10) + ' h';
