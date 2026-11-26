@@ -707,7 +707,10 @@ auth.onAuthStateChanged(async (user) => {
         showAuthAlert('Tu cuenta no está habilitada en este portal. Contacta al administrador.');
         return;
       }
-      currentRole = doc.data().role || 'student';
+      const _d = doc.data();
+      const _bloq = await _bloqueoLogin(_d);
+      if (_bloq) { await auth.signOut(); showAuth(); showAuthAlert(_bloq); return; }
+      currentRole = _d.role || 'student';
     } catch(e) { currentRole = 'student'; }
     showDashboard();
   } else {
@@ -715,6 +718,20 @@ auth.onAuthStateChanged(async (user) => {
   }
 });
 
+/* Motivo por el que una cuenta no debe entrar al portal ('' = puede entrar).
+   El bloqueo real de las salas lo hace el Worker; esto evita que la persona vea un portal vacío. Si algo falla, no bloquea. */
+async function _bloqueoLogin(d) {
+  try {
+    if (d.role === 'admin') return '';
+    if (d.suspendido === true) return 'Tu cuenta está suspendida. Contacta a INASEP.';
+    if ((d.role || 'student') !== 'student') return '';
+    const mat = Array.isArray(d.cursos) ? d.cursos : [], ret = Array.isArray(d.cursosRetirados) ? d.cursosRetirados : [];
+    if (!mat.length) return ret.length ? 'Fuiste retirado del curso. Contacta a INASEP si necesitas más información.' : '';
+    const sn = await db.collection('cursos').where('estado', '==', 'cerrado').get();
+    const cerrados = new Set(sn.docs.map(x => x.data().name));
+    return mat.every(n => cerrados.has(n)) ? 'Tu curso ya finalizó. ¡Gracias por participar en INASEP!' : '';
+  } catch (e) { return ''; }
+}
 function showAuth() {
   document.getElementById('authSection').classList.remove('hidden');
   document.getElementById('dashboardSection').classList.add('hidden');
@@ -1342,8 +1359,8 @@ async function crearCursoDesdeExcel() {
       archivo: _imp.archivo || '', estado: 'activo', createdBy: currentUser.uid, createdAt: SV
     });
     await batch.commit();
-    toast(`✅ Curso creado: ${fechas.length} día(s) y sala ${sala}.`, 'success', 7000);
-    _imp = null; navigate('live-classes');
+    toast(`✅ Curso creado: ${fechas.length} día(s). Ahora matricula a los alumnos para que lo vean.`, 'success', 9000);
+    _imp = null; navigate('carpeta-curso', { name: nombre, tab: 'alumnos' });
   } catch (e) { toast('❌ ' + e.message, 'error', 9000); if (btn) { btn.disabled = false; btn.textContent = '✅ Crear curso'; } }
 }
 
@@ -1354,13 +1371,25 @@ function toLocalInput(ts) {
 }
 
 /* Latido (cada 5 min) y salida: el servidor calcula los minutos válidos dentro de la ventana oficial del bloque */
+function _accesoRevocado(j) {
+  if (_heartbeatTimer) { clearInterval(_heartbeatTimer); _heartbeatTimer = null; }
+  _currentClassId = null; _classEntryTime = null;
+  if (_jitsiApi) { try { _jitsiApi.dispose(); } catch (e) {} _jitsiApi = null; }
+  const host = document.getElementById('jitsiHost');
+  if (host) host.innerHTML = `<div class="video-placeholder"><div class="icon">🔒</div><p><strong>${escHtml(j.error || 'Ya no tienes acceso a esta sala.')}</strong></p></div>`;
+  toast('🔒 ' + (j.error || 'Ya no tienes acceso a esta sala.'), 'error', 9000);
+  if (j.code === 'CURSO_CERRADO' || j.code === 'SUSPENDIDO') setTimeout(() => { try { logout(); } catch (e) {} }, 3500);
+  else setTimeout(() => navigate('live-classes'), 3500);
+}
 function startHeartbeat(classId) {
   if (_heartbeatTimer) { clearInterval(_heartbeatTimer); _heartbeatTimer = null; }
   _currentClassId = classId;
   _classEntryTime = new Date();
   _heartbeatTimer = setInterval(() => {
     if (!currentUser || !_currentClassId) return;
-    workerFetch('/api/asistencia/latido', { method: 'POST', body: JSON.stringify({ classId: _currentClassId }) }).catch(() => {});
+    workerFetch('/api/asistencia/latido', { method: 'POST', body: JSON.stringify({ classId: _currentClassId }) })
+      .then(async (r) => { if (r.status === 403) { const j = await r.json().catch(() => ({})); if (j.revocado) _accesoRevocado(j); } })
+      .catch(() => {});
   }, 300000);
 }
 async function stopHeartbeat() {
@@ -1692,12 +1721,11 @@ function updateSidebar() {
     { label:'🗄️ Archivar Curso',  view:'archivar-curso'   },
     { label:'📁 Cursos Archivados', view:'cursos-archivados'},
   ] : isTeacher ? [
-    { label:'📹 Mis Clases',      view:'live-classes'     },
-    { label:'📁 Carpetas de Cursos', view:'carpetas'      },
+    { label:'📹 Mi Curso Activo', view:'live-classes'     },
     { label:'👥 Asistencia Hoy',  view:'teacher-attendance'},
-    { label:'📊 Reportes',        view:'teacher-reports'  },
     { label:'📖 Libro de Clases', view:'libro-clases'     },
-    { label:'🗓️ Horario',         view:'schedule-view'    },
+    { label:'📊 Reportes',        view:'teacher-reports'  },
+    { label:'📁 Archivo de Cursos', view:'carpetas'       },
   ] : isFiscalizador ? [
     { label:'🔍 Panel Fiscalización', view:'fisc-dashboard'   },
     { label:'📹 Clases',              view:'fisc-clases'      },
@@ -1952,7 +1980,8 @@ function _tarjetaClaseSuelta(doc, isAdmin, isTeacher) {
       </div>
     </div>`;
 }
-function _tarjetaCurso(cursoId, ses, isAdmin, isTeacher) {
+function _tarjetaCurso(cursoId, ses, isAdmin, isTeacher, estCurso) {
+  const cerrado = estCurso === 'cerrado';
   const hoy = _diaChile(new Date());
   _cursosCache[cursoId] = ses;
   const mias = isTeacher ? ses.filter(_esMiClase) : ses;
@@ -1975,7 +2004,8 @@ function _tarjetaCurso(cursoId, ses, isAdmin, isTeacher) {
     else if (sel.fecha > hoy) accion = `<span class="badge badge-blue">Próxima clase: ${escHtml(_fechaLarga(sel.fecha))}</span>`;
     else accion = `<span class="badge badge-gray">Curso finalizado</span>`;
   }
-  const estado = live ? '<span class="badge badge-live">🔴 EN VIVO</span>' : fin ? '<span class="badge badge-gray">✅ Sesión finalizada</span>' : esHoy ? '<span class="badge badge-green">📅 Hoy</span>' : '<span class="badge badge-blue">📅 ' + escHtml(_diaLabel(sel.fecha)) + '</span>';
+  if (cerrado) accion = '<span class="badge badge-gray">🔒 Curso cerrado</span>';
+  const estado = cerrado ? '<span class="badge badge-gray">🔒 Cerrado</span>' : live ? '<span class="badge badge-live">🔴 EN VIVO</span>' : fin ? '<span class="badge badge-gray">✅ Sesión finalizada</span>' : esHoy ? '<span class="badge badge-green">📅 Hoy</span>' : '<span class="badge badge-blue">📅 ' + escHtml(_diaLabel(sel.fecha)) + '</span>';
   return `
     <div class="curso-card">
       <div class="cc-head"><div><h4>🎓 ${escHtml(nombre)}</h4><div style="font-size:12px;color:var(--text-light);margin-top:3px;font-family:'DM Mono',monospace">${escHtml(sel.jitsiRoom || '')}</div></div>${estado}</div>
@@ -1985,7 +2015,9 @@ function _tarjetaCurso(cursoId, ses, isAdmin, isTeacher) {
         <div class="live-class-actions">
           ${accion}
           <button class="btn btn-sm btn-secondary" onclick="verHorarioCurso('${cursoId}')">🗓️ Horario del curso</button>
-          ${isAdmin ? `<button class="btn btn-sm btn-secondary" onclick="navigate('carpeta-curso',{name:${escHtml(JSON.stringify(nombre)).replace(/'/g, '&#39;')}})">📁 Carpeta</button><button class="btn btn-sm btn-danger" onclick="eliminarCurso('${cursoId}')">🗑️</button>` : ''}
+          ${isAdmin ? `<button class="btn btn-sm btn-secondary" onclick="navigate('carpeta-curso',{name:${escHtml(JSON.stringify(nombre)).replace(/'/g, '&#39;')}})">📁 Carpeta</button>
+            ${cerrado ? `<button class="btn btn-sm btn-primary" onclick="reabrirCurso('${cursoId}')">🔓 Reabrir curso</button>` : `<button class="btn btn-sm btn-secondary" onclick="navigate('carpeta-curso',{name:${escHtml(JSON.stringify(nombre)).replace(/'/g, '&#39;')},tab:'alumnos'})">👥 Alumnos</button><button class="btn btn-sm btn-warning" onclick="cerrarCurso('${cursoId}')">🔒 Cerrar curso</button>`}
+            <button class="btn btn-sm btn-danger" onclick="eliminarCurso('${cursoId}')">🗑️</button>` : ''}
         </div>
       </div>
     </div>`;
@@ -2010,35 +2042,69 @@ async function eliminarCurso(cursoId) {
     toast('🗑️ Curso eliminado.', 'success'); navigate('live-classes');
   } catch (e) { toast('❌ ' + e.message, 'error'); }
 }
+async function cerrarCurso(cursoId) {
+  const ses = _cursosCache[cursoId] || []; const nombre = ses[0] ? ses[0].courseName : 'este curso';
+  if (!confirm(`¿Cerrar el curso "${nombre}"?\n\n• Los alumnos y profesores dejan de poder entrar a la sala.\n• Si hay una clase en vivo, se finaliza ahora.\n• Todos los registros (asistencia, minutos, Libro de Clases) se conservan.\n• Puedes reabrirlo cuando quieras.`)) return;
+  try {
+    const res = await workerFetch('/api/curso/cerrar', { method: 'POST', body: JSON.stringify({ cursoId }) });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j.error || ('Error del servidor (' + res.status + ')'));
+    toast('🔒 Curso cerrado. Los alumnos ya no tienen acceso.', 'success', 6000);
+    navigate('live-classes');
+  } catch (e) { toast('❌ ' + e.message, 'error', 8000); }
+}
+async function reabrirCurso(cursoId) {
+  if (!confirm('¿Reabrir este curso? Los alumnos matriculados vuelven a tener acceso.')) return;
+  try {
+    const res = await workerFetch('/api/curso/reabrir', { method: 'POST', body: JSON.stringify({ cursoId }) });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j.error || ('Error del servidor (' + res.status + ')'));
+    toast('🔓 Curso reabierto.', 'success'); navigate('live-classes');
+  } catch (e) { toast('❌ ' + e.message, 'error', 8000); }
+}
+async function _cursoCerrado(cls) {
+  if (!cls.cursoId || currentRole === 'admin' || currentRole === 'fiscalizador') return false;
+  try { const d = await db.collection('cursos').doc(cls.cursoId).get(); return d.exists && d.data().estado === 'cerrado'; } catch (e) { return false; }
+}
+const _msgCursoCerrado = '<div class="empty-state"><div class="icon">🔒</div><p>Este curso ya finalizó. Gracias por participar.</p></div>';
 async function renderLiveClasses(mc) {
   const isAdmin   = currentRole==='admin';
   const isTeacher = currentRole==='teacher';
   mc.innerHTML = `
     <div class="page-header">
-      <div><h2>📹 Clases en Vivo</h2><div class="breadcrumb">${isAdmin ? 'Cursos y clases' : 'Tu acceso a clases'}</div></div>
+      <div><h2>${isTeacher ? '📹 Mi Curso Activo' : '📹 Clases en Vivo'}</h2><div class="breadcrumb">${isAdmin ? 'Cursos y clases' : 'Tu acceso a clases'}</div></div>
       ${isAdmin ? '<button class="btn btn-primary" onclick="navigate(\'nuevo-curso\')">📥 Nuevo Curso (Excel)</button>' : ''}
     </div>
     <div id="classesContainer"><div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div></div>`;
   try {
     const snap = await db.collection('liveClasses').get();
     const cont = document.getElementById('classesContainer');
+    const estados = {};
+    try { (await db.collection('cursos').get()).docs.forEach(d => { estados[d.id] = d.data().estado || 'activo'; }); } catch (e) {}
     let matricula = [];
     if (!isAdmin && !isTeacher) { try { const u = await db.collection('users').doc(currentUser.uid).get(); matricula = (u.exists && Array.isArray(u.data().cursos)) ? u.data().cursos : []; } catch (e) {} }
     const grupos = {}, sueltas = [];
     snap.docs.forEach(d => {
       const c = { id: d.id, ...d.data() };
-      if (c.cursoId) { if (!isAdmin && !isTeacher && matricula.length && !matricula.includes(c.courseName)) return; (grupos[c.cursoId] = grupos[c.cursoId] || []).push(c); }
-      else sueltas.push(d);
+      if (c.cursoId) {
+        if (!isAdmin && !isTeacher && !matricula.includes(c.courseName)) return;            // el alumno solo ve los cursos en que está matriculado
+        if (!isAdmin && estados[c.cursoId] === 'cerrado') return;                           // curso cerrado: sin acceso (solo el admin lo ve)
+        (grupos[c.cursoId] = grupos[c.cursoId] || []).push(c);
+      } else sueltas.push(d);
     });
     _cursosCache = {};
-    const cursos = Object.entries(grupos).map(([id, L]) => [id, L.sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''))])
+    const ordenados = Object.entries(grupos).map(([id, L]) => [id, L.sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''))])
       .filter(([, L]) => !isTeacher || L.some(_esMiClase))
       .sort((a, b) => (b[1][b[1].length - 1].fecha || '').localeCompare(a[1][a[1].length - 1].fecha || ''));
+    const activos = ordenados.filter(([id]) => estados[id] !== 'cerrado'), cerrados = ordenados.filter(([id]) => estados[id] === 'cerrado');
     const sortedDocs = sueltas.sort((a,b) => (b.data().scheduledAt?.toDate?.()?.getTime() || 0) - (a.data().scheduledAt?.toDate?.()?.getTime() || 0));
-    if (!cursos.length && !sortedDocs.length) { cont.innerHTML='<div class="empty-state"><div class="icon">📭</div><p>No hay clases disponibles.</p></div>'; return; }
-    cont.innerHTML = cursos.map(([id, L]) => _tarjetaCurso(id, L, isAdmin, isTeacher)).join('')
-      + (sortedDocs.length && cursos.length ? '<div class="carp-mes">Clases sueltas</div>' : '')
-      + sortedDocs.map(d => _tarjetaClaseSuelta(d, isAdmin, isTeacher)).join('');
+    if (!ordenados.length && !sortedDocs.length) {
+      cont.innerHTML = `<div class="empty-state"><div class="icon">📭</div><p>${isTeacher ? 'No tienes un curso activo por ahora.' : isAdmin ? 'No hay clases disponibles.' : 'Aún no tienes cursos activos. Si ya te matricularon, contacta a INASEP.'}</p></div>`; return;
+    }
+    cont.innerHTML = activos.map(([id, L]) => _tarjetaCurso(id, L, isAdmin, isTeacher, 'activo')).join('')
+      + (sortedDocs.length && ordenados.length ? '<div class="carp-mes">Clases sueltas</div>' : '')
+      + sortedDocs.map(d => _tarjetaClaseSuelta(d, isAdmin, isTeacher)).join('')
+      + (cerrados.length ? '<div class="carp-mes">Cursos cerrados</div>' + cerrados.map(([id, L]) => _tarjetaCurso(id, L, isAdmin, isTeacher, 'cerrado')).join('') : '');
   } catch(e) {
     document.getElementById('classesContainer').innerHTML = `<div class="empty-state"><div class="icon">❌</div><p>${escHtml(e.message)}</p></div>`;
   }
@@ -2189,6 +2255,7 @@ async function renderClassRoom(mc, params={}) {
   const doc = await db.collection('liveClasses').doc(classId).get();
   if (!doc.exists) { mc.innerHTML='<div class="empty-state"><div class="icon">❌</div><p>Clase no encontrada.</p></div>'; return; }
   const cls = doc.data();
+  if (await _cursoCerrado(cls)) { mc.innerHTML = _msgCursoCerrado; return; }
   const esFisc = currentRole === 'fiscalizador';
   const activa = cls.status === 'active';
   const finalizada = cls.status === 'finished';
@@ -2305,6 +2372,7 @@ async function renderTeacherRoom(mc, params={}) {
   const doc = await db.collection('liveClasses').doc(classId).get();
   if (!doc.exists) { mc.innerHTML='<div class="empty-state"><div class="icon">❌</div><p>Clase no encontrada.</p></div>'; return; }
   const cls = doc.data();
+  if (await _cursoCerrado(cls)) { mc.innerHTML = _msgCursoCerrado; return; }
   const durMin = cls.duration || 60;
   const otroDia = currentRole === 'teacher' && !!cls.fecha && cls.fecha !== _diaChile(new Date());
   const isActive = cls.status === 'active';
@@ -5040,12 +5108,14 @@ async function renderCarpetas(mc) {
     const alumnos = alSnap.docs.map(d => d.data());
     const mapa = {};
     clases.forEach(c => { const n = _nombreCursoDe(c); (mapa[n] = mapa[n] || { nombre: n, clases: [] }).clases.push(c); });
+    const cerradosN = new Set();
+    try { (await db.collection('cursos').where('estado', '==', 'cerrado').get()).docs.forEach(d => cerradosN.add(d.data().name)); } catch (e) {}
     _carpetas = Object.values(mapa).map(f => {
       const dias = [...new Set(f.clases.map(_claseDia).filter(Boolean))].sort();
       const estados = f.clases.map(c => c.status);
       return {
         nombre: f.nombre, nClases: f.clases.length, nDias: dias.length, primero: dias[0] || '', ultimo: dias[dias.length - 1] || '',
-        estado: estados.includes('active') ? 'En curso' : estados.every(x => x === 'finished') ? 'Finalizado' : 'Programado',
+        estado: cerradosN.has(f.nombre) ? 'Cerrado' : estados.includes('active') ? 'En curso' : estados.every(x => x === 'finished') ? 'Finalizado' : 'Programado',
         matriculados: alumnos.filter(a => Array.isArray(a.cursos) && a.cursos.includes(f.nombre)).length
       };
     }).sort((a, b) => (b.ultimo || '').localeCompare(a.ultimo || ''));
@@ -5067,7 +5137,7 @@ function pintarCarpetas() {
         <div style="flex:1;min-width:0">
           <div class="carp-name">${escHtml(f.nombre)}</div>
           <div class="carp-meta"><span>📹 ${f.nClases} clase${f.nClases === 1 ? '' : 's'}</span><span>📅 ${f.nDias} día${f.nDias === 1 ? '' : 's'}</span><span>🎓 ${f.matriculados} matriculado${f.matriculados === 1 ? '' : 's'}</span></div>
-          <span class="badge ${f.estado === 'En curso' ? 'badge-live' : f.estado === 'Finalizado' ? 'badge-gray' : 'badge-blue'}">${f.estado}</span>
+          <span class="badge ${f.estado === 'En curso' ? 'badge-live' : (f.estado === 'Finalizado' || f.estado === 'Cerrado') ? 'badge-gray' : 'badge-blue'}">${f.estado}</span>
           ${f.primero ? `<span style="font-size:11.5px;color:var(--text-light);margin-left:6px">${fmtDate(f.primero + 'T12:00:00')}${f.ultimo !== f.primero ? ' → ' + fmtDate(f.ultimo + 'T12:00:00') : ''}</span>` : ''}
         </div>
       </div>`).join('')}</div>`;
@@ -5120,8 +5190,19 @@ async function cargarCurso(name) {
 
   // Nómina: matriculados en el curso + cualquiera que haya asistido
   const nomina = {};
-  todos.forEach(u => { if (Array.isArray(u.cursos) && u.cursos.includes(name)) nomina[u.uid] = { uid: u.uid, nombre: u.name || '—', rut: u.rut || '—', matriculado: true }; });
+  todos.forEach(u => { if (Array.isArray(u.cursos) && u.cursos.includes(name)) nomina[u.uid] = { uid: u.uid, nombre: u.name || '—', rut: u.rut || '—', matriculado: true, suspendido: u.suspendido === true }; });
   att.filter(_esAsistAlumno).forEach(a => { if (!nomina[a.userId]) { const u = todos.find(t => t.uid === a.userId); nomina[a.userId] = { uid: a.userId, nombre: u?.name || a.userName || '—', rut: u?.rut || a.userRut || '—', matriculado: false, eliminado: !u }; } });
+  // Retirados del curso: siguen en la nómina con su asistencia hasta el retiro
+  try {
+    const rt = await db.collection('retiros').where('courseName', '==', name).get();
+    rt.docs.forEach(d => {
+      const r = d.data(); const u = todos.find(t => t.uid === r.uid);
+      const x = nomina[r.uid] || (nomina[r.uid] = { uid: r.uid, nombre: r.nombre || u?.name || '—', rut: r.rut || u?.rut || '—', matriculado: false, eliminado: !u });
+      if (!x.matriculado) { x.retirado = true; x.motivoRetiro = r.motivo || ''; }
+      x.suspendido = !!(u && u.suspendido === true);
+    });
+  } catch (e) { /* sin permiso o sin datos: se muestra la nómina normal */ }
+  todos.forEach(u => { if (nomina[u.uid]) nomina[u.uid].suspendido = u.suspendido === true; });
   const alumnos = Object.values(nomina).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
 
   const totalOficial = dias.reduce((t, d) => t + d.oficial, 0);
@@ -5162,7 +5243,7 @@ async function renderCarpetaCurso(mc, params = {}) {
   mc.innerHTML = `<div class="empty-state"><div class="icon">⏳</div><p>Cargando carpeta del curso...</p></div>`;
   try {
     _curso = await cargarCurso(name);
-    _cursoTab = 'matriz'; _cursoDia = _curso.dias.length ? _curso.dias[_curso.dias.length - 1].fecha : '';
+    _cursoTab = ['matriz','dia','ramos','alumnos'].includes(params.tab) ? params.tab : 'matriz'; _cursoDia = _curso.dias.length ? _curso.dias[_curso.dias.length - 1].fecha : '';
     const c = _curso;
     const prom = c.alumnos.length ? Math.round(c.alumnos.reduce((t, a) => t + a.pct, 0) / c.alumnos.length) : 0;
     mc.innerHTML = `
@@ -5183,6 +5264,7 @@ async function renderCarpetaCurso(mc, params = {}) {
         <button class="cp-tab" data-t="alumnos" onclick="cursoTab('alumnos')">🎓 Alumnos del curso</button>
       </div>
       <div id="cursoCont"></div>`;
+    document.querySelectorAll('.cp-tab').forEach(b => b.classList.toggle('active', b.dataset.t === _cursoTab));
     pintarCurso();
   } catch (e) { mc.innerHTML = `<div class="empty-state"><div class="icon">❌</div><p>${escHtml(e.message)}</p></div>`; }
 }
@@ -5198,7 +5280,7 @@ function pintarCurso() {
     cont.innerHTML = `<div class="mx-wrap"><table class="mx"><thead><tr>
       <th class="stk">Alumno</th><th>RUT</th>${c.dias.map(d => `<th title="${d.clases.length} bloque(s) · ${d.oficial} min oficiales">${_diaLabel(d.fecha)}</th>`).join('')}<th>Presente</th><th>Parcial</th><th>Ausente</th><th>% asist.</th></tr></thead><tbody>
       ${c.alumnos.map((a, i) => `<tr>
-        <td class="stk"><strong>${i + 1}. ${escHtml(a.nombre)}</strong>${!a.matriculado ? ' <span class="badge badge-orange" style="font-size:9.5px" title="Asistió pero no está matriculado en este curso">sin matricular</span>' : ''}</td>
+        <td class="stk"><strong>${i + 1}. ${escHtml(a.nombre)}</strong>${a.retirado ? ' <span class="badge badge-red" style="font-size:9.5px" title="' + escHtml(a.motivoRetiro || 'Retirado del curso') + '">retirado</span>' : !a.matriculado ? ' <span class="badge badge-orange" style="font-size:9.5px" title="Asistió pero no está matriculado en este curso">sin matricular</span>' : ''}${a.suspendido ? ' <span class="badge badge-red" style="font-size:9.5px">suspendido</span>' : ''}</td>
         <td style="font-family:'DM Mono';font-size:12px">${escHtml(a.rut)}</td>
         ${a.dias.map(x => x.estado === 'P' ? `<td class="ok" title="Entrada ${x.entrada ? _hm(x.entrada) : '—'} · Salida ${x.salida ? _hm(x.salida) : '—'}">✔<small>${x.min} min</small></td>`
           : x.estado === 'PP' ? `<td class="par" title="Asistencia parcial: ${x.pct}% del bloque">½<small>${x.min} min</small></td>` : '<td class="aus">✕</td>').join('')}
@@ -5238,12 +5320,62 @@ function pintarCurso() {
       <div class="card-header"><h3>🎓 Alumnos del curso (${c.alumnos.length})</h3>${admin ? '<button class="btn btn-primary btn-sm" onclick="abrirMatricula()">➕ Matricular alumnos</button>' : ''}</div>
       ${c.alumnos.length ? `<div class="table-wrap"><table><thead><tr><th>N°</th><th>Alumno</th><th>RUT</th><th>Condición</th><th>Días presente</th><th>% asist.</th>${admin ? '<th></th>' : ''}</tr></thead><tbody>
         ${c.alumnos.map((a, n) => `<tr><td>${n + 1}</td><td><strong>${escHtml(a.nombre)}</strong></td><td style="font-family:'DM Mono';font-size:12px">${escHtml(a.rut)}</td>
-          <td>${a.matriculado ? '<span class="badge badge-green">Matriculado</span>' : '<span class="badge badge-orange">Sin matricular</span>'}</td>
+          <td>${a.retirado ? '<span class="badge badge-red" title="' + escHtml(a.motivoRetiro || '') + '">Retirado</span>' : a.matriculado ? '<span class="badge badge-green">Matriculado</span>' : '<span class="badge badge-orange">Sin matricular</span>'}${a.suspendido ? ' <span class="badge badge-red">Suspendido</span>' : ''}</td>
           <td style="text-align:center">${a.P} / ${c.dias.length}</td><td style="text-align:center">${a.pct}%</td>
-          ${admin ? `<td style="text-align:right">${a.matriculado ? `<button class="btn btn-sm btn-secondary" onclick="quitarDeCurso('${a.uid}')">Quitar</button>` : (a.eliminado ? '' : `<button class="btn btn-sm btn-primary" onclick="matricularUno('${a.uid}')">Matricular</button>`)}</td>` : ''}</tr>`).join('')}
+          ${admin ? `<td style="text-align:right;white-space:nowrap">${_accionesAlumno(a)}</td>` : ''}</tr>`).join('')}
       </tbody></table></div>` : '<div class="empty-state"><div class="icon">🎓</div><p>Aún no hay alumnos en este curso.' + (admin ? ' Usa "Matricular alumnos".' : '') + '</p></div>'}
     </div>`;
   }
+}
+
+/* ── Retirar / suspender (solo administrador) ── */
+function _accionesAlumno(a) {
+  if (a.eliminado) return '';
+  const b = [];
+  if (a.matriculado) b.push(`<button class="btn btn-sm btn-secondary" onclick="retirarAlumno('${a.uid}')" title="Le quita el acceso a este curso; su asistencia se conserva">🚪 Retirar</button>`);
+  else b.push(`<button class="btn btn-sm btn-primary" onclick="matricularUno('${a.uid}')">${a.retirado ? 'Reincorporar' : 'Matricular'}</button>`);
+  b.push(a.suspendido ? `<button class="btn btn-sm btn-success" onclick="reactivarAlumno('${a.uid}')">✅ Reactivar</button>` : `<button class="btn btn-sm btn-danger" onclick="suspenderAlumno('${a.uid}')" title="Bloquea su cuenta en todo el portal">⛔ Suspender</button>`);
+  return b.join(' ');
+}
+function _alumnoDe(uid) { return (_curso && _curso.alumnos.find(x => x.uid === uid)) || { nombre: 'el alumno' }; }
+function retirarAlumno(uid) {
+  const a = _alumnoDe(uid);
+  openModal(`<h3>🚪 Retirar del curso</h3>
+    <p style="font-size:13px;color:var(--text-mid);line-height:1.6;margin:6px 0 12px"><strong>${escHtml(a.nombre)}</strong> dejará de ver y de poder entrar a <strong>${escHtml(_curso.nombre)}</strong>. Su asistencia hasta hoy se conserva y aparecerá como "Retirado". Si está conectado, se desconecta en unos minutos (puedes expulsarlo de la sala al tiro desde el panel de participantes).</p>
+    <div class="form-group"><label>Motivo *</label><textarea id="rt_motivo" rows="3" placeholder="Ej: Incumplimiento de normas, retiro voluntario..."></textarea></div>
+    <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-danger" onclick="confirmarRetiro('${uid}')">🚪 Retirar</button></div>`);
+}
+async function confirmarRetiro(uid) {
+  const motivo = (document.getElementById('rt_motivo').value || '').trim();
+  if (motivo.length < 4) return toast('⚠️ Escribe el motivo del retiro.', 'warning');
+  const a = _alumnoDe(uid), name = _curso.nombre, fv = firebase.firestore.FieldValue;
+  try {
+    const b = db.batch();
+    b.update(db.collection('users').doc(uid), { cursos: fv.arrayRemove(name), cursosRetirados: fv.arrayUnion(name) });
+    b.set(db.collection('retiros').doc(slugTxt(name).slice(0, 80) + '__' + uid), { uid, nombre: a.nombre || '', rut: a.rut || '', courseName: name, motivo, fecha: fv.serverTimestamp(), porUid: currentUser.uid, porNombre: currentUser.displayName || currentUser.email || '' });
+    await b.commit();
+    closeModal(); toast('🚪 Alumno retirado del curso.', 'success'); navigate('carpeta-curso', { name, tab: 'alumnos' });
+  } catch (e) { toast('❌ No se pudo retirar: ' + e.message, 'error', 8000); }
+}
+function suspenderAlumno(uid) {
+  const a = _alumnoDe(uid);
+  openModal(`<h3>⛔ Suspender cuenta</h3>
+    <p style="font-size:13px;color:var(--text-mid);line-height:1.6;margin:6px 0 12px"><strong>${escHtml(a.nombre)}</strong> no podrá iniciar sesión ni entrar a ninguna sala hasta que lo reactives. Sus registros se conservan.</p>
+    <div class="form-group"><label>Motivo *</label><textarea id="su_motivo" rows="3" placeholder="Ej: Faltas reiteradas a las normas del curso..."></textarea></div>
+    <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-danger" onclick="confirmarSuspension('${uid}')">⛔ Suspender</button></div>`);
+}
+async function confirmarSuspension(uid) {
+  const motivo = (document.getElementById('su_motivo').value || '').trim();
+  if (motivo.length < 4) return toast('⚠️ Escribe el motivo.', 'warning');
+  try {
+    await db.collection('users').doc(uid).update({ suspendido: true, suspendidoMotivo: motivo, suspendidoAt: firebase.firestore.FieldValue.serverTimestamp(), suspendidoPor: currentUser.uid });
+    closeModal(); toast('⛔ Cuenta suspendida.', 'success'); navigate('carpeta-curso', { name: _curso.nombre, tab: 'alumnos' });
+  } catch (e) { toast('❌ ' + e.message, 'error', 8000); }
+}
+async function reactivarAlumno(uid) {
+  if (!confirm('¿Reactivar la cuenta de ' + _alumnoDe(uid).nombre + '?')) return;
+  try { await db.collection('users').doc(uid).update({ suspendido: false }); toast('✅ Cuenta reactivada.', 'success'); navigate('carpeta-curso', { name: _curso.nombre, tab: 'alumnos' }); }
+  catch (e) { toast('❌ ' + e.message, 'error', 8000); }
 }
 
 /* ── Matrícula (solo administrador): se guarda en el campo "cursos" de la ficha del alumno ── */
@@ -5286,7 +5418,7 @@ async function quitarDeCurso(uid) {
   try { await _cambiarMatricula([], [uid]); toast('Alumno quitado del curso.', 'success'); navigate('carpeta-curso', { name: _curso.nombre }); } catch (e) { toast('❌ ' + e.message, 'error'); }
 }
 async function matricularUno(uid) {
-  try { await _cambiarMatricula([uid], []); toast('Alumno matriculado.', 'success'); navigate('carpeta-curso', { name: _curso.nombre }); } catch (e) { toast('❌ ' + e.message, 'error'); }
+  try { await _cambiarMatricula([uid], []); try { await db.collection('retiros').doc(slugTxt(_curso.nombre).slice(0, 80) + '__' + uid).delete(); } catch (e) {} toast('Alumno matriculado.', 'success'); navigate('carpeta-curso', { name: _curso.nombre }); } catch (e) { toast('❌ ' + e.message, 'error'); }
 }
 
 /* ── Excel profesional: Resumen, Matriz, Minutos y una hoja por día ── */
