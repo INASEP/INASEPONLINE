@@ -498,6 +498,40 @@ iframe.video-frame { width:100%; height:100%; min-height:500px; border:none; }
 .mx-leyenda { display:flex; gap:16px; flex-wrap:wrap; font-size:12px; color:var(--text-mid); margin:10px 2px 0; }
 .mx-leyenda i { display:inline-block; width:12px; height:12px; border-radius:3px; margin-right:5px; vertical-align:-2px; }
 @media (max-width:768px){ .jitsi-host, .jitsi-host iframe { min-height:0; } .video-room { min-height:0; aspect-ratio:16/9; height:auto; } }
+
+/* ── Cursos con horario (Excel) ── */
+.ramo-panel { border-radius:var(--radius-lg); padding:16px 20px; margin-bottom:16px; background:linear-gradient(135deg,var(--green-900),var(--green-700)); color:#fff; box-shadow:var(--shadow); }
+.ramo-panel.pres { background:linear-gradient(135deg,#5b3a0a,#a8650f); }
+.ramo-panel.fin { background:linear-gradient(135deg,#3b4a42,#5e6f66); }
+.ramo-panel .rp-lbl { font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase; opacity:.8; display:flex; align-items:center; gap:8px; }
+.ramo-panel .rp-lbl i { width:9px; height:9px; border-radius:50%; background:#ff5a4f; box-shadow:0 0 0 0 rgba(255,90,79,.7); animation:rpPulse 1.6s infinite; }
+@keyframes rpPulse { 70% { box-shadow:0 0 0 9px rgba(255,90,79,0); } 100% { box-shadow:0 0 0 0 rgba(255,90,79,0); } }
+.ramo-panel .rp-name { font-size:22px; font-weight:800; line-height:1.25; margin:4px 0 10px; }
+.ramo-panel .rp-chips { display:flex; flex-wrap:wrap; gap:8px; }
+.ramo-panel .rp-chip { background:rgba(255,255,255,.14); border-radius:99px; padding:5px 13px; font-size:12.5px; font-weight:600; }
+.ramo-panel .rp-next { margin-top:12px; font-size:12.5px; opacity:.85; border-top:1px solid rgba(255,255,255,.18); padding-top:10px; }
+.ramo-panel .rp-aviso { margin-top:10px; background:rgba(255,255,255,.16); border-radius:10px; padding:10px 14px; font-size:13px; line-height:1.55; }
+.ramo-panel details { margin-top:10px; }
+.ramo-panel summary { cursor:pointer; font-size:12.5px; font-weight:600; opacity:.9; }
+.rp-dia { margin-top:8px; display:flex; flex-direction:column; gap:4px; }
+.rp-fila { display:flex; gap:10px; font-size:12.5px; padding:5px 10px; border-radius:8px; background:rgba(255,255,255,.07); align-items:baseline; flex-wrap:wrap; }
+.rp-fila.now { background:rgba(255,255,255,.24); font-weight:700; }
+.rp-fila .h { font-family:'DM Mono',monospace; min-width:104px; }
+.curso-card { background:#fff; border:1px solid var(--border); border-radius:var(--radius-lg); box-shadow:var(--shadow); margin-bottom:18px; overflow:hidden; }
+.curso-card .cc-head { padding:16px 20px; display:flex; justify-content:space-between; gap:12px; align-items:flex-start; flex-wrap:wrap; border-bottom:1px solid var(--border); }
+.curso-card .cc-head h4 { font-size:16px; color:var(--green-900); line-height:1.3; }
+.curso-card .cc-body { padding:16px 20px; }
+.curso-card .cc-meta { display:flex; flex-wrap:wrap; gap:6px 16px; font-size:12.5px; color:var(--text-mid); margin-bottom:12px; }
+.imp-drop { display:block; border:2px dashed var(--primary-light, #5fa376); border-radius:var(--radius-lg); padding:30px 20px; text-align:center; cursor:pointer; background:var(--green-50, #f1f8f3); }
+.imp-drop:hover { background:#e6f3ea; }
+.imp-msg { border-radius:10px; padding:9px 14px; font-size:13px; line-height:1.5; margin-bottom:6px; }
+.imp-msg.err { background:#fde8e8; color:#a93226; }
+.imp-msg.warn { background:#fef3e6; color:#8a4a07; }
+.imp-msg.ok { background:#e6f9ee; color:#1a7a3a; }
+.imp-dia { border:1px solid var(--border); border-radius:10px; padding:10px 14px; margin-bottom:8px; background:#fff; }
+.imp-dia .d { font-weight:700; color:var(--green-900); font-size:13px; margin-bottom:5px; }
+.imp-bl { display:flex; gap:10px; font-size:12.5px; padding:3px 0; flex-wrap:wrap; align-items:baseline; }
+.imp-bl .h { font-family:'DM Mono',monospace; color:var(--text-mid); min-width:104px; }
 </style>
 </head>
 <body>
@@ -741,11 +775,12 @@ function _fijar(id) { try { if (_jitsiApi && id) _jitsiApi.executeCommand('pinPa
 function _fijarYo() { _fijar(_salaState.local); }
 function _buscarDocente() {
   try {
-    if (!_salaState.teacher) return;
-    const p = (_jitsiApi.getParticipantsInfo() || []).find(x => x.participantId !== _salaState.local && _norm(x.displayName) === _salaState.teacher);
-    if (p) { _salaState.pinned = true; _fijar(p.participantId); }
+    const lista = [].concat(_salaState.teacher || []).filter(Boolean); if (!lista.length) return;
+    const ps = (_jitsiApi.getParticipantsInfo() || []).filter(x => x.participantId !== _salaState.local);
+    for (const n of lista) { const p = ps.find(x => _norm(x.displayName) === n); if (p) { _salaState.pinned = true; _fijar(p.participantId); return; } }
   } catch (e) {}
 }
+
 function _contarSala() {
   try { const n = _jitsiApi.getNumberOfParticipants(); const el = document.getElementById('salaCount'); if (el) el.textContent = n; } catch (e) {}
   if (typeof _renderListaDocente === 'function') _renderListaDocente();
@@ -785,7 +820,7 @@ async function montarVideoJitsi(hostId, classId, opts = {}) {
       Object.assign(cfg, { startWithAudioMuted: true, startWithVideoMuted: true, disableShortcuts: true, filmstrip: { disabled: true }, channelLastN: 4,
         toolbarButtons: ['microphone', 'raisehand', 'fullscreen', 'settings'] });
     }
-    _salaState = { local: null, pinned: false, tile: false, teacher: _norm(opts.teacherName), timer: null };
+    _salaState = { local: null, pinned: false, tile: false, teacher: _normLista(opts.teacherName), timer: null };
     const api = new JitsiMeetExternalAPI(j.domain, {
       roomName: j.room, jwt: j.jwt, parentNode: host, width: '100%', height: '100%',
       userInfo: { displayName: currentUser.displayName || '' }, configOverwrite: cfg
@@ -797,7 +832,7 @@ async function montarVideoJitsi(hostId, classId, opts = {}) {
     });
     api.addListener('participantJoined', (e) => {
       _contarSala();
-      if (!esDocente && !obs && !_salaState.pinned && _salaState.teacher && _norm(e.displayName) === _salaState.teacher) { _salaState.pinned = true; _fijar(e.id); }
+      if (!esDocente && !obs && !_salaState.pinned && _esDocenteNombre(e.displayName)) { _salaState.pinned = true; _fijar(e.id); }
     });
     api.addListener('participantLeft', _contarSala);
     api.addListener('participantRoleChanged', (e) => {
@@ -828,7 +863,7 @@ async function reingresarSala(classId) {
     const d = await db.collection('liveClasses').doc(classId).get();
     if (!d.exists) return toast('Clase no encontrada', 'error');
     const c = d.data();
-    montarVideoJitsi('jitsiHost', classId, { teacherName: c.teacherName || c.profesorNombre, titulo: c.title });
+    montarVideoJitsi('jitsiHost', classId, { teacherName: _nombresRelatores(c, (_ramoAhora(c) || {}).actual), titulo: _asuntoSala(c) });
   } catch (e) { toast(e.message, 'error'); }
 }
 
@@ -874,6 +909,414 @@ function generarSala(title, dateStr) {
   return `online-${base}-${f}-${rnd}`.slice(0, 90);
 }
 const SALA_RE = /^online-[a-z0-9][a-z0-9._-]{2,92}$/;
+
+/* ════════════════════════════════════════════════
+   CURSOS CON HORARIO (se cargan desde Excel)
+   · Un curso = una sala fija + una sesión por día (liveClasses) con sus bloques de horario.
+   · Bloque teórico = online (se registra asistencia). Bloque práctico = presencial (fuera de la plataforma).
+════════════════════════════════════════════════ */
+const HORA_PEDAG = 45;
+const MESES_L = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+const _normLista = (v) => [].concat(v || []).map(_norm).filter(Boolean);
+const _esDocenteNombre = (n) => _normLista(_salaState.teacher).includes(_norm(n));
+const _pad2 = (n) => String(n).padStart(2, '0');
+const _hhmm = (min) => _pad2(Math.floor(min / 60)) + ':' + _pad2(min % 60);
+function _sumaDias(iso, n) { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+function _difDias(a, b) { return Math.round((new Date(b + 'T12:00:00Z') - new Date(a + 'T12:00:00Z')) / 86400000); }
+function _fechaLarga(iso) { return new Date(iso + 'T12:00:00').toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); }
+function _chileInstante(iso, min) {
+  const [y, mo, d] = iso.split('-').map(Number);
+  const fmt = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Santiago', hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' });
+  const off = (t) => { const p = {}; fmt.formatToParts(new Date(t)).forEach(x => { p[x.type] = x.value; }); return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute) - Math.floor(t / 60000) * 60000; };
+  const guess = Date.UTC(y, mo - 1, d, Math.floor(min / 60), min % 60);
+  let t = guess - off(guess); t = guess - off(t);
+  return new Date(t);
+}
+
+/* ── Lectura del Excel ── */
+function _parseRango(txt) {
+  const m = String(txt || '').match(/(\d{1,2})\s*[:.hH]\s*(\d{2})\s*(?:hasta|al|a|-|–|—)\s*(\d{1,2})\s*[:.hH]\s*(\d{2})/i);
+  if (!m) return null;
+  if (+m[1] > 23 || +m[3] > 23 || +m[2] > 59 || +m[4] > 59) return null;
+  const a = +m[1] * 60 + +m[2], b = +m[3] * 60 + +m[4];
+  return b > a ? [a, b] : null;
+}
+function _fechaCelda(v) {
+  const iso = (y, m, d) => (y > 1999 && m >= 1 && m <= 12 && d >= 1 && d <= 31) ? `${y}-${_pad2(m)}-${_pad2(d)}` : '';
+  if (v instanceof Date && !isNaN(v)) return iso(v.getFullYear(), v.getMonth() + 1, v.getDate());
+  if (typeof v === 'number' && v > 20000 && v < 80000) { const d = new Date(Date.UTC(1899, 11, 30) + Math.floor(v) * 86400000); return iso(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate()); }
+  const s = String(v || '').trim(); let m;
+  if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return iso(+m[1], +m[2], +m[3]);
+  if ((m = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/))) return iso(m[3].length === 2 ? 2000 + +m[3] : +m[3], +m[2], +m[1]);
+  return '';
+}
+const _num = (v) => { const n = parseFloat(String(v === undefined || v === null ? '' : v).replace(',', '.')); return isFinite(n) && n > 0 ? n : 0; };
+function _normRutTxt(r) { const x = String(r || '').replace(/[^0-9kK]/g, '').toUpperCase(); return x.length > 1 ? x.slice(0, -1) + '-' + x.slice(-1) : x; }
+
+function _leerExcelCurso(buf, archivo) {
+  const wb = XLSX.read(buf, { type: 'array' });
+  const hojas = wb.SheetNames.map(n => ({ n, rows: XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: '' }) }));
+  let datos = null;
+  for (const h of hojas) {
+    for (let r = 0; r < Math.min(h.rows.length, 60) && !datos; r++) {
+      const c = {};
+      h.rows[r].forEach((v, i) => {
+        const t = _norm(v);
+        if (t === 'fecha' && c.fecha === undefined) c.fecha = i;
+        else if (t.startsWith('horario') && c.hor === undefined) c.hor = i;
+        else if (t.startsWith('asignatura') && c.asig === undefined) c.asig = i;
+        else if (t.startsWith('teoric') && c.teo === undefined) c.teo = i;
+        else if (t.startsWith('practic') && c.pra === undefined) c.pra = i;
+        else if ((t.startsWith('relator') || t.startsWith('profesor') || t === 'docente') && c.rel === undefined) c.rel = i;
+        else if (t.startsWith('rut') && c.rut === undefined) c.rut = i;
+      });
+      if (c.fecha !== undefined && c.hor !== undefined && c.asig !== undefined && c.rel !== undefined && (c.teo !== undefined || c.pra !== undefined)) datos = { h, r, c };
+    }
+    if (datos) break;
+  }
+  if (!datos) throw new Error('No encontré la tabla de clases. Debe tener las columnas: Fecha, Horario Clases, Asignaturas, Teóricas, Prácticas y Relator Asignado.');
+  const { h, r: r0, c } = datos;
+  const filas = [];
+  for (let r = r0 + 1; r < h.rows.length; r++) {
+    const x = h.rows[r];
+    const vacia = [c.fecha, c.hor, c.asig, c.rel].every(i => String(x[i] === undefined ? '' : x[i]).trim() === '');
+    if (vacia) continue;
+    const f = { fila: r + 1, fecha: _fechaCelda(x[c.fecha]), rango: String(x[c.hor] || '').trim(), ramo: String(x[c.asig] || '').replace(/\s+/g, ' ').trim(),
+      T: c.teo !== undefined ? _num(x[c.teo]) : 0, P: c.pra !== undefined ? _num(x[c.pra]) : 0, relator: String(x[c.rel] || '').replace(/\s+/g, ' ').trim(), rut: c.rut !== undefined ? _normRutTxt(x[c.rut]) : '' };
+    const rg = _parseRango(f.rango); if (rg) { f.ini = rg[0]; f.fin = rg[1]; }
+    const prob = [];
+    if (!f.fecha) prob.push('fecha ilegible'); if (!rg) prob.push('horario ilegible ("' + f.rango + '"; usa 09:15 a 10:45)');
+    if (!f.ramo) prob.push('falta la asignatura'); if (!f.relator) prob.push('falta el relator'); if (!f.T && !f.P) prob.push('sin horas teóricas ni prácticas');
+    f.prob = prob; f.ok = !prob.length;
+    filas.push(f);
+  }
+  // Datos complementarios (hoja "Horario General" u otras): nombre del curso, horas por ramo y RUT de relatores
+  let titulo = '', ramosRef = [], ruts = {};
+  for (const hh of hojas) {
+    for (let r = 0; r < Math.min(hh.rows.length, 80); r++) {
+      const x = hh.rows[r], t = x.map(_norm);
+      const ia = t.findIndex(v => v === 'asignaturas'), it = t.findIndex(v => v === 'horas teoricas'), ip = t.findIndex(v => v === 'horas practicas');
+      if (ia >= 0 && it >= 0 && ip >= 0 && !ramosRef.length) {
+        for (let q = r + 1; q < hh.rows.length; q++) { const y = hh.rows[q]; const nom = String(y[ia] || '').trim(); if (!nom) { if (ramosRef.length) break; continue; } ramosRef.push({ nombre: nom, T: _num(y[it]), P: _num(y[ip]) }); }
+      }
+      const inom = t.findIndex(v => v.startsWith('nombre') && v.includes('capacitador')), irut = t.findIndex(v => v.startsWith('rut'));
+      if (inom >= 0 && irut >= 0) {
+        for (let q = r + 1; q < hh.rows.length; q++) { const y = hh.rows[q]; const nom = String(y[inom] || '').trim(); const rt = _normRutTxt(y[irut]); if (nom && rt && !ruts[_norm(nom)]) ruts[_norm(nom)] = rt; }
+      }
+    }
+    if (!titulo && hh.n !== datos.h.n) { const p = (hh.rows[0] || []).map(v => String(v || '').trim()).filter(Boolean); if (p.length) titulo = p[0]; }
+  }
+  filas.forEach(f => { if (!f.rut && ruts[_norm(f.relator)]) f.rut = ruts[_norm(f.relator)]; });
+  if (!titulo) titulo = String(archivo || '').replace(/\.[a-z0-9]+$/i, '').replace(/horario|capacitadores?/ig, '').replace(/[_\-]+/g, ' ').replace(/\d{1,2} \d{1,2} \d{4}/, '').replace(/\s+/g, ' ').trim() || 'FORMACION';
+  return { filas, ramosRef, ruts, titulo: titulo.toUpperCase(), archivo };
+}
+
+function _nombreSugerido(titulo, filas) {
+  const f = filas.filter(x => x.fecha).map(x => x.fecha).sort()[0];
+  if (!f) return 'CURSO ' + titulo;
+  const [y, m, d] = f.split('-').map(Number);
+  return `CURSO ${titulo} ${d} ${MESES_L[m - 1].toUpperCase()} ${y}`;
+}
+const _slugCurso = (nombre) => slugTxt(nombre).slice(0, 80);
+
+/* ── Bloques por día: teoría primero (online) y luego práctica (presencial); contiguos del mismo ramo se unen ── */
+function _sesionesDeFilas(filas, delta) {
+  const por = {};
+  filas.forEach(f => {
+    if (!f.ok) return;
+    const fecha = delta ? _sumaDias(f.fecha, delta) : f.fecha;
+    const L = (por[fecha] = por[fecha] || []);
+    const base = { ramo: f.ramo, relatorKey: _norm(f.relator), relatorExcel: f.relator };
+    if (f.T > 0 && f.P > 0) {
+      let mid = f.ini + f.T * HORA_PEDAG; if (mid >= f.fin) mid = f.ini + Math.round((f.fin - f.ini) * f.T / (f.T + f.P));
+      L.push({ ...base, ini: f.ini, fin: mid, modalidad: 'online', horas: f.T }, { ...base, ini: mid, fin: f.fin, modalidad: 'presencial', horas: f.P });
+    } else L.push({ ...base, ini: f.ini, fin: f.fin, modalidad: f.T > 0 ? 'online' : 'presencial', horas: f.T > 0 ? f.T : f.P });
+  });
+  Object.values(por).forEach(L => {
+    L.sort((a, b) => a.ini - b.ini);
+    for (let i = L.length - 2; i >= 0; i--) { const a = L[i], b = L[i + 1]; if (a.fin === b.ini && a.ramo === b.ramo && a.relatorKey === b.relatorKey && a.modalidad === b.modalidad) { a.fin = b.fin; a.horas += b.horas; L.splice(i + 1, 1); } }
+  });
+  return por;
+}
+
+function _validarCurso(filas, ramosRef, delta) {
+  const err = [], av = [];
+  filas.forEach(f => { if (!f.ok) err.push(`Fila ${f.fila}: ${f.prob.join(', ')}.`); });
+  const ok = filas.filter(f => f.ok);
+  ok.forEach(f => {
+    const dur = f.fin - f.ini, esp = (f.T + f.P) * HORA_PEDAG;
+    if (Math.abs(dur - esp) > 5) av.push(`Fila ${f.fila} (${f.fecha}, ${f.rango}): dura ${dur} min pero ${f.T + f.P} hora(s) pedagógica(s) serían ${esp} min.`);
+  });
+  const dias = {}; ok.forEach(f => { (dias[f.fecha] = dias[f.fecha] || []).push(f); });
+  Object.keys(dias).sort().forEach(d => {
+    const L = dias[d].slice().sort((a, b) => a.ini - b.ini);
+    for (let i = 1; i < L.length; i++) if (L[i].ini < L[i - 1].fin) err.push(`${d}: se cruzan "${L[i - 1].rango}" (fila ${L[i - 1].fila}) y "${L[i].rango}" (fila ${L[i].fila}).`);
+  });
+  if (ramosRef.length) {
+    const suma = {}; ok.forEach(f => { const k = _norm(f.ramo); const x = (suma[k] = suma[k] || { T: 0, P: 0, n: f.ramo }); x.T += f.T; x.P += f.P; });
+    ramosRef.forEach(rf_ => {
+      const x = suma[_norm(rf_.nombre)];
+      if (!x) av.push(`"${rf_.nombre}" figura en la tabla de horas pero no tiene clases en el horario.`);
+      else if (x.T !== rf_.T || x.P !== rf_.P) av.push(`"${rf_.nombre}": el horario suma ${x.T} h teóricas y ${x.P} h prácticas, la tabla de horas dice ${rf_.T} y ${rf_.P}.`);
+    });
+    Object.keys(suma).forEach(k => { if (!ramosRef.some(r => _norm(r.nombre) === k)) av.push(`"${suma[k].n}" está en el horario pero no en la tabla de horas por asignatura.`); });
+  }
+  const fechas = ok.map(f => delta ? _sumaDias(f.fecha, delta) : f.fecha).sort();
+  if (fechas.length && fechas[0] < _diaChile(new Date())) av.push(`El curso parte el ${fechas[0]} (fecha pasada). Las sesiones anteriores a hoy quedarán sin asistencia registrada.`);
+  return { err, av };
+}
+
+/* ── Ramo en curso ── */
+function _bloquesDe(cls) {
+  return (Array.isArray(cls.bloques) ? cls.bloques : []).map((b, k) => ({ ...b, i: Number.isInteger(b.i) ? b.i : k, ini: _toD(b.iniAt), fin: _toD(b.finAt) })).filter(b => b.ini && b.fin);
+}
+function _ramoAhora(cls, ahora) {
+  const bl = _bloquesDe(cls); if (!bl.length) return null;
+  const t = (ahora || new Date()).getTime();
+  const actual = bl.find(b => t >= b.ini.getTime() && t < b.fin.getTime()) || null;
+  const sig = bl.find(b => b.ini.getTime() > t) || null;
+  const hoy = _diaChile(ahora || new Date());
+  const estado = actual ? 'ahora' : sig ? (cls.fecha === hoy ? 'siguiente' : 'futuro') : 'terminado';
+  return { bl, actual, sig, estado };
+}
+function _nombresRelatores(cls, actual) {
+  const lista = [];
+  if (actual && actual.modalidad === 'online' && actual.relator) lista.push(actual.relator);
+  _bloquesDe(cls).filter(b => b.modalidad === 'online' && b.relator).forEach(b => { if (!lista.includes(b.relator)) lista.push(b.relator); });
+  if (!lista.length) { const n = cls.teacherName || cls.profesorNombre; if (n) lista.push(n); }
+  return lista;
+}
+function _asuntoSala(cls) {
+  const st = _ramoAhora(cls);
+  const base = cls.courseName || cls.title || 'Clase en vivo';
+  if (!st) return cls.title || base;
+  if (st.actual) return `${base} · ${st.actual.ramo}${st.actual.modalidad === 'presencial' ? ' (presencial)' : ''}`;
+  return base;
+}
+const _rangoB = (b) => `${_hm(b.ini)} – ${_hm(b.fin)}`;
+const _modBadge = (b) => b.modalidad === 'online' ? '📡 Online' : '🏫 Presencial';
+function ramoPanelHtml(cls, compacto) {
+  const st = _ramoAhora(cls); if (!st) return '';
+  const b = st.actual || st.sig || st.bl[st.bl.length - 1];
+  const pres = b.modalidad === 'presencial';
+  const etiqueta = st.estado === 'ahora' ? '<i></i>Ramo en curso' : st.estado === 'siguiente' ? 'A continuación' : st.estado === 'futuro' ? 'Primer ramo de la jornada' : 'Jornada finalizada · último ramo';
+  const clase = st.estado === 'terminado' ? 'fin' : (pres && st.actual) ? 'pres' : '';
+  const aviso = (pres && st.actual) ? '<div class="rp-aviso">🏫 Este bloque es <strong>práctico y presencial</strong>: se realiza en terreno, fuera de la plataforma. No necesitas estar conectado; la sala online vuelve a usarse en el próximo bloque teórico.</div>' : '';
+  const sig = st.actual && st.sig ? `<div class="rp-next">Siguiente: <strong>${escHtml(st.sig.ramo)}</strong> · ${_rangoB(st.sig)} · ${_modBadge(st.sig)}</div>` : '';
+  const detalle = compacto ? '' : `<details><summary>Ver horario completo del día</summary><div class="rp-dia">${st.bl.map(x => `<div class="rp-fila ${st.actual && st.actual.i === x.i ? 'now' : ''}"><span class="h">${_rangoB(x)}</span><span>${escHtml(x.ramo)}</span><span style="opacity:.75">${escHtml(x.relator || '')}</span><span style="margin-left:auto">${_modBadge(x)}</span></div>`).join('')}</div></details>`;
+  return `<div class="ramo-panel ${clase}">
+    <div class="rp-lbl">${etiqueta}</div>
+    <div class="rp-name">${escHtml(b.ramo)}</div>
+    <div class="rp-chips"><span class="rp-chip">👨‍🏫 ${escHtml(b.relator || 'Relator por definir')}</span><span class="rp-chip">🕘 ${_rangoB(b)}</span><span class="rp-chip">${_modBadge(b)}</span></div>
+    ${aviso}${sig}${detalle}
+  </div>`;
+}
+let _ramoTimer = null, _ramoKey = '';
+function detenerRamoTicker() { if (_ramoTimer) { clearInterval(_ramoTimer); _ramoTimer = null; } _ramoKey = ''; }
+function iniciarRamoTicker(cls) {
+  detenerRamoTicker();
+  if (!_bloquesDe(cls).length) return;
+  const tick = () => {
+    const el = document.getElementById('ramoPanel'); if (!el) { detenerRamoTicker(); return; }
+    const st = _ramoAhora(cls);
+    const key = st.actual ? 'a' + st.actual.i : 'n' + (st.sig ? st.sig.i : 'x');
+    if (key === _ramoKey) return;
+    const cambio = _ramoKey !== '';
+    _ramoKey = key; el.innerHTML = ramoPanelHtml(cls);
+    if (_jitsiApi) {
+      try { _jitsiApi.executeCommand('subject', _asuntoSala(cls)); } catch (e) {}
+      if (currentRole !== 'teacher' && currentRole !== 'admin') { _salaState.teacher = _normLista(_nombresRelatores(cls, st.actual)); _salaState.pinned = false; _buscarDocente(); }
+    }
+    if (cambio && st.actual) toast(`📚 Ahora: ${st.actual.ramo}${st.actual.modalidad === 'presencial' ? ' (presencial)' : ''}`, 'info', 6000);
+  };
+  _ramoTimer = setInterval(tick, 20000); tick();
+}
+function _ramosDeDocente(cls, uid) {
+  const on = _bloquesDe(cls).filter(b => b.modalidad === 'online');
+  const mios = on.filter(b => b.relatorUid && b.relatorUid === uid);
+  const L = (mios.length ? mios : on).map(b => b.ramo);
+  return [...new Set(L)];
+}
+function _minBloqueOficial(c, b) {
+  const i = _toD(c.bloqueIniciadoAt); let f = _toD(c.bloqueCerradoAt);
+  if (i && !f && c.status === 'active') f = new Date();
+  if (!i || !f) return 0;
+  const S = Math.max(i.getTime(), b.ini.getTime()), E = Math.min(f.getTime(), b.fin.getTime());
+  return Math.max(0, Math.round((E - S) / 60000));
+}
+
+/* ════════════════════════════════════════════════
+   VISTA: NUEVO CURSO (desde Excel) — solo administrador
+════════════════════════════════════════════════ */
+let _imp = null;
+async function renderNuevoCurso(mc) {
+  if (currentRole !== 'admin') { mc.innerHTML = '<div class="empty-state"><div class="icon">🔒</div><p>Solo un administrador puede crear cursos.</p></div>'; return; }
+  _imp = null;
+  mc.innerHTML = `
+    <div class="page-header"><div><h2>📥 Nuevo Curso desde Excel</h2><div class="breadcrumb"><a onclick="navigate('live-classes')">← Clases</a> › Nuevo curso</div></div></div>
+    <div class="card">
+      <label class="imp-drop">
+        <input type="file" id="impFile" accept=".xlsx,.xls" hidden onchange="impLeer(this.files[0])">
+        <div style="font-size:38px;margin-bottom:6px">📄</div>
+        <div style="font-weight:700;color:var(--green-900);font-size:15px">Haz clic para elegir el Excel del curso</div>
+        <div style="font-size:12.5px;color:var(--text-mid);margin-top:6px;line-height:1.6">Hoja con las columnas <strong>Fecha · Horario Clases · Asignaturas · Teóricas · Prácticas · Relator Asignado</strong>.<br>Opcional: una hoja "Horario General" con el nombre del curso, las horas por asignatura y el RUT de los relatores.</div>
+      </label>
+    </div>
+    <div id="impCont"></div>`;
+}
+async function impLeer(file) {
+  if (!file) return;
+  const cont = document.getElementById('impCont');
+  cont.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>Leyendo el Excel...</p></div>';
+  try {
+    if (typeof XLSX === 'undefined') throw new Error('No se pudo cargar el lector de Excel. Revisa tu conexión.');
+    const dat = _leerExcelCurso(await file.arrayBuffer(), file.name);
+    if (!dat.filas.length) throw new Error('El Excel no trae filas de clases.');
+    const tSnap = await db.collection('users').where('role', '==', 'teacher').get();
+    const teachers = tSnap.docs.map(d => ({ uid: d.data().uid || d.id, name: d.data().name || '', rut: _normRutTxt(d.data().rut) }));
+    const rels = {};
+    dat.filas.filter(f => f.relator).forEach(f => { const k = _norm(f.relator); const r = (rels[k] = rels[k] || { key: k, excel: f.relator, rut: '' }); if (!r.rut && f.rut) r.rut = f.rut; });
+    Object.values(rels).forEach(r => {
+      const ex = (r.rut && teachers.find(t => t.rut === r.rut)) || teachers.find(t => _norm(t.name) === r.key);
+      r.sel = ex ? 'uid:' + ex.uid : (r.rut && validarRut(r.rut)) ? 'new' : 'none';
+    });
+    _imp = { ...dat, teachers, rels, nombre: _nombreSugerido(dat.titulo, dat.filas), inicio: '' };
+    pintarImportador();
+  } catch (e) { cont.innerHTML = `<div class="card" style="border-left:4px solid var(--danger,#c0392b)"><strong>❌ ${escHtml(e.message)}</strong></div>`; }
+}
+function pintarImportador() {
+  const cont = document.getElementById('impCont'); if (!cont || !_imp) return;
+  cont.innerHTML = `
+    <div class="card">
+      <div class="card-header"><h3>⚙️ Configuración del curso</h3><span class="badge badge-gray">${escHtml(_imp.archivo || '')}</span></div>
+      <div class="form-row">
+        <div class="form-group"><label>Nombre del curso *</label><input type="text" id="imp_nombre" value="${escHtml(_imp.nombre)}" oninput="_imp.nombre=this.value;impRefrescar()"></div>
+        <div class="form-group"><label>Fecha de inicio (opcional)</label><input type="date" id="imp_inicio" value="${_imp.inicio}" onchange="_imp.inicio=this.value;impRefrescar()"><small>Vacío = se usan las fechas del Excel. Si eliges una, todo el calendario se corre manteniendo los días entre clases.</small></div>
+      </div>
+      <div style="font-size:12.5px;color:var(--text-mid);line-height:1.7">Sala Jitsi (fija durante todo el curso): <strong id="imp_sala" style="font-family:'DM Mono',monospace;color:var(--green-900)"></strong><br>Alumnos y profesores ven el <strong>nombre del curso</strong> como título de la sala y, arriba, el ramo que se está dictando en ese momento.</div>
+    </div>
+    <div id="impPrev"></div>`;
+  impRefrescar();
+}
+function _impDelta() {
+  if (!_imp.inicio) return 0;
+  const f = _imp.filas.filter(x => x.ok).map(x => x.fecha).sort()[0];
+  return f ? _difDias(f, _imp.inicio) : 0;
+}
+function impRefrescar() {
+  const prev = document.getElementById('impPrev'); if (!prev || !_imp) return;
+  const delta = _impDelta();
+  const slug = _slugCurso(_imp.nombre);
+  const sala = document.getElementById('imp_sala'); if (sala) sala.textContent = slug ? 'online-' + slug : '—';
+  const val = _validarCurso(_imp.filas, _imp.ramosRef, delta);
+  const ses = _sesionesDeFilas(_imp.filas, delta);
+  const fechas = Object.keys(ses).sort();
+  const todos = fechas.flatMap(f => ses[f]);
+  const minOn = todos.filter(b => b.modalidad === 'online').reduce((t, b) => t + (b.fin - b.ini), 0);
+  const minPr = todos.filter(b => b.modalidad === 'presencial').reduce((t, b) => t + (b.fin - b.ini), 0);
+  const horasT = _imp.filas.filter(f => f.ok).reduce((t, f) => t + f.T, 0), horasP = _imp.filas.filter(f => f.ok).reduce((t, f) => t + f.P, 0);
+  const relList = Object.values(_imp.rels);
+  const optUid = (r) => _imp.teachers.map(t => `<option value="uid:${escHtml(t.uid)}" ${r.sel === 'uid:' + t.uid ? 'selected' : ''}>Usar cuenta: ${escHtml(t.name)}${t.rut ? ' (' + escHtml(t.rut) + ')' : ''}</option>`).join('');
+  prev.innerHTML = `
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-icon">📅</div><div class="stat-value">${fechas.length}</div><div class="stat-label">Días de clase</div></div>
+      <div class="stat-card"><div class="stat-icon">📡</div><div class="stat-value">${horasT}</div><div class="stat-label">Horas teóricas (online) · ${Math.round(minOn / 60 * 10) / 10} h reloj</div></div>
+      <div class="stat-card"><div class="stat-icon">🏫</div><div class="stat-value">${horasP}</div><div class="stat-label">Horas prácticas (presencial) · ${Math.round(minPr / 60 * 10) / 10} h reloj</div></div>
+      <div class="stat-card"><div class="stat-icon">👨‍🏫</div><div class="stat-value">${relList.length}</div><div class="stat-label">Relatores</div></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><h3>✅ Revisión del Excel</h3></div>
+      ${val.err.map(m => `<div class="imp-msg err">❌ ${escHtml(m)}</div>`).join('')}
+      ${val.av.map(m => `<div class="imp-msg warn">⚠️ ${escHtml(m)}</div>`).join('')}
+      ${!val.err.length && !val.av.length ? '<div class="imp-msg ok">✅ Todo calza: fechas, horarios, horas por asignatura y sin cruces.</div>' : ''}
+      ${!val.err.length && val.av.length ? '<div class="imp-msg ok">Puedes crear el curso: las advertencias no lo bloquean, pero revísalas.</div>' : ''}
+      ${val.err.length ? '<div style="font-size:12.5px;color:var(--text-mid);margin-top:6px">Corrige el Excel y vuelve a subirlo. Los errores impiden crear el curso.</div>' : ''}
+    </div>
+    <div class="card">
+      <div class="card-header"><h3>👨‍🏫 Relatores</h3></div>
+      <div class="table-wrap"><table><thead><tr><th>Relator (Excel)</th><th>RUT</th><th>Cuenta en la plataforma</th></tr></thead><tbody>
+      ${relList.map(r => `<tr><td><strong>${escHtml(r.excel)}</strong></td><td style="font-family:'DM Mono';font-size:12px">${escHtml(r.rut || '—')}</td>
+        <td><select onchange="_imp.rels['${r.key.replace(/'/g, '')}'].sel=this.value;impRefrescar()" style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:12.5px;max-width:340px">
+          ${r.rut && validarRut(r.rut) ? `<option value="new" ${r.sel === 'new' ? 'selected' : ''}>➕ Crear cuenta (clave: últimos 6 dígitos del RUT)</option>` : ''}
+          ${optUid(r)}
+          <option value="none" ${r.sel === 'none' ? 'selected' : ''}>Sin cuenta (solo aparece su nombre; solo un administrador puede iniciar sus bloques)</option>
+        </select></td></tr>`).join('')}
+      </tbody></table></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><h3>🗓️ Horario por día</h3></div>
+      ${fechas.map(f => `<div class="imp-dia"><div class="d">${escHtml(_fechaLarga(f))}</div>
+        ${ses[f].map(b => `<div class="imp-bl"><span class="h">${_hhmm(b.ini)} – ${_hhmm(b.fin)}</span><span style="flex:1;min-width:200px"><strong>${escHtml(b.ramo)}</strong> · ${escHtml(b.relatorExcel)}</span><span class="badge ${b.modalidad === 'online' ? 'badge-blue' : 'badge-orange'}">${b.modalidad === 'online' ? '📡 Online' : '🏫 Presencial'} · ${b.horas} h</span></div>`).join('')}</div>`).join('') || '<p style="color:var(--text-mid)">Sin filas válidas.</p>'}
+    </div>
+    <div class="flex gap-2 justify-between flex-wrap" style="margin-bottom:30px">
+      <button class="btn btn-secondary" onclick="navigate('live-classes')">← Cancelar</button>
+      <button class="btn btn-primary" id="btnCrearCurso" ${val.err.length || !slug || (_imp.nombre || '').trim().length < 6 ? 'disabled' : ''} onclick="crearCursoDesdeExcel()">✅ Crear curso</button>
+    </div>`;
+}
+async function crearCursoDesdeExcel() {
+  if (!_imp) return;
+  const btn = document.getElementById('btnCrearCurso'); const msg = (t) => { if (btn) { btn.disabled = true; btn.textContent = t; } };
+  const nombre = (_imp.nombre || '').replace(/\s+/g, ' ').trim();
+  const slug = _slugCurso(nombre); const sala = 'online-' + slug;
+  const delta = _impDelta(); const val = _validarCurso(_imp.filas, _imp.ramosRef, delta);
+  if (val.err.length) return toast('⚠️ Corrige los errores del Excel primero.', 'warning');
+  if (!SALA_RE.test(sala)) return toast('⚠️ El nombre del curso no genera una sala válida.', 'warning');
+  try {
+    msg('⏳ Comprobando...');
+    const ex = await db.collection('cursos').where('name', '==', nombre).limit(1).get();
+    const ex2 = await db.collection('cursos').where('jitsiRoom', '==', sala).limit(1).get();
+    if (!ex.empty || !ex2.empty) { toast('⚠️ Ya existe un curso con ese nombre. Cámbialo (por ejemplo, agrega la fecha o un número).', 'warning', 7000); if (btn) { btn.disabled = false; btn.textContent = '✅ Crear curso'; } return; }
+
+    // 1) Cuentas de relatores
+    msg('⏳ Preparando relatores...');
+    const cuenta = {};
+    for (const r of Object.values(_imp.rels)) {
+      if (r.sel.startsWith('uid:')) { const t = _imp.teachers.find(x => x.uid === r.sel.slice(4)); cuenta[r.key] = { uid: t.uid, nombre: t.name || r.excel }; }
+      else if (r.sel === 'new') {
+        const email = rutToEmail(r.rut), pass = rutToPassword(r.rut);
+        let c; try { c = await _obtenerCuentaAuth(email, pass, r.excel); }
+        catch (e) { throw new Error(e.code === 'CLAVE_DISTINTA' ? `El RUT ${r.rut} ya tiene una cuenta con otra clave. Elige esa cuenta en "Relatores" o restablécela.` : e.message); }
+        await db.collection('users').doc(c.uid).set({ uid: c.uid, email, name: r.excel, rut: r.rut, role: 'teacher', createdAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+        try { await secondaryAuth.signOut(); } catch (_) {}
+        cuenta[r.key] = { uid: c.uid, nombre: r.excel };
+      } else cuenta[r.key] = { uid: '', nombre: r.excel };
+    }
+
+    // 2) Curso y sesiones
+    msg('⏳ Creando sesiones...');
+    const ses = _sesionesDeFilas(_imp.filas, delta); const fechas = Object.keys(ses).sort();
+    const cursoId = 'C' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 5).toUpperCase();
+    const TS = firebase.firestore.Timestamp, SV = firebase.firestore.FieldValue.serverTimestamp();
+    const batch = db.batch();
+    const ramos = {};
+    _imp.filas.filter(f => f.ok).forEach(f => { const x = (ramos[f.ramo] = ramos[f.ramo] || { nombre: f.ramo, teoricas: 0, practicas: 0 }); x.teoricas += f.T; x.practicas += f.P; });
+    fechas.forEach(f => {
+      const bl = ses[f].map((b, i) => { const c = cuenta[b.relatorKey] || { uid: '', nombre: b.relatorExcel };
+        return { i, iniAt: TS.fromDate(_chileInstante(f, b.ini)), finAt: TS.fromDate(_chileInstante(f, b.fin)), ramo: b.ramo, relator: c.nombre, relatorUid: c.uid, modalidad: b.modalidad, horas: b.horas }; });
+      const on = bl.filter(b => b.modalidad === 'online');
+      const uids = [...new Set(on.map(b => b.relatorUid).filter(Boolean))];
+      const nombresOn = [...new Set(on.map(b => b.relator))];
+      const primero = on.find(b => b.relatorUid) || null;
+      const durMin = ses[f].filter(b => b.modalidad === 'online').reduce((t, b) => t + (b.fin - b.ini), 0);
+      batch.set(db.collection('liveClasses').doc(`${cursoId}D${f.replace(/-/g, '')}`), {
+        title: nombre, courseName: nombre, cursoId, fecha: f, description: '',
+        scheduledAt: TS.fromDate(_chileInstante(f, (ses[f].find(b => b.modalidad === 'online') || ses[f][0]).ini)), duration: durMin || 0,
+        videoType: 'jitsi', jitsiRoom: sala, videoUrl: '', status: 'scheduled', soloPresencial: !on.length, bloques: bl,
+        teacherUid: primero ? primero.relatorUid : '', teacherName: nombresOn.join(', '), profesorUid: primero ? primero.relatorUid : '', profesorNombre: nombresOn.join(', '), profesoresUids: uids,
+        createdBy: currentUser.uid, createdAt: SV, updatedAt: SV
+      });
+    });
+    batch.set(db.collection('cursos').doc(cursoId), {
+      name: nombre, slug, jitsiRoom: sala, fechaInicio: fechas[0], fechaFin: fechas[fechas.length - 1], nSesiones: fechas.length,
+      ramos: Object.values(ramos), relatores: Object.values(_imp.rels).map(r => ({ nombre: (cuenta[r.key] || {}).nombre || r.excel, rut: r.rut || '', uid: (cuenta[r.key] || {}).uid || '' })),
+      archivo: _imp.archivo || '', estado: 'activo', createdBy: currentUser.uid, createdAt: SV
+    });
+    await batch.commit();
+    toast(`✅ Curso creado: ${fechas.length} día(s) y sala ${sala}.`, 'success', 7000);
+    _imp = null; navigate('live-classes');
+  } catch (e) { toast('❌ ' + e.message, 'error', 9000); if (btn) { btn.disabled = false; btn.textContent = '✅ Crear curso'; } }
+}
+
 function toLocalInput(ts) {
   const d = ts?.toDate ? ts.toDate() : new Date(ts);
   const p = n => String(n).padStart(2, '0');
@@ -1206,7 +1649,8 @@ function updateSidebar() {
   const links = isAdmin ? [
     { label:'📊 Panel',           view:'dashboard'        },
     { label:'📹 Clases en Vivo',  view:'live-classes'     },
-    { label:'➕ Nueva Clase',     view:'new-class'        },
+    { label:'📥 Nuevo Curso (Excel)', view:'nuevo-curso'  },
+    { label:'➕ Clase suelta',    view:'new-class'        },
     { label:'🎓 Alumnos',         view:'alumnos'          },
     { label:'👨‍🏫 Profesores',      view:'profesores'       },
     { label:'👥 Asistencia',      view:'attendance'       },
@@ -1258,6 +1702,7 @@ function navigate(view, params={}) {
   if ((currentView === 'class-room' || currentView === 'teacher-room') && view !== currentView) stopHeartbeat();
   _detenerVigilanciaSesion();
   _limpiarLista();
+  detenerRamoTicker();
   if (_jitsiApi) { try { _jitsiApi.dispose(); } catch (e) {} _jitsiApi = null; }
   if (_claseListener) { _claseListener(); _claseListener = null; }
   if (_chatListener) { _chatListener(); _chatListener = null; }
@@ -1282,6 +1727,7 @@ function renderMain(view, params={}) {
     'dashboard':           renderAdminDashboard,
     'live-classes':        renderLiveClasses,
     'new-class':           renderNewClass,
+    'nuevo-curso':         renderNuevoCurso,
     'attendance':          renderAttendance,
     'reports':             renderReports,
     'schedule':            renderSchedule,
@@ -1449,70 +1895,120 @@ async function renderAdminDashboard(mc) {
 /* ════════════════════════════════════════════════
    VISTA: CLASES EN VIVO (todos los roles)
 ════════════════════════════════════════════════ */
+let _cursosCache = {};
+function _tarjetaClaseSuelta(doc, isAdmin, isTeacher) {
+  const c = doc.data(); const isLive = c.status==='active'; const isDone = c.status==='finished';
+  return `
+    <div class="live-class-card">
+      <div class="live-class-header">
+        <h4>${escHtml(c.title)}</h4>
+        <span class="badge ${isLive?'badge-live':isDone?'badge-gray':'badge-blue'}">${isLive?'🔴 EN VIVO':isDone?'✅ Finalizada':'📅 Programada'}</span>
+      </div>
+      <div class="live-class-body">
+        <div class="live-class-meta">
+          <span>📅 ${fmtDateTime(c.scheduledAt)}</span><span>⏱ ${c.duration||60} min</span>
+          ${c.courseName ? `<span>🎓 ${escHtml(c.courseName)}</span>` : ''}${c.teacherName ? `<span>👨‍🏫 ${escHtml(c.teacherName)}</span>` : ''}
+        </div>
+        ${c.description ? `<p style="font-size:13px;color:var(--text-mid);margin-bottom:12px">${escHtml(c.description)}</p>` : ''}
+        <div class="live-class-actions">
+          ${isTeacher||isAdmin ? `
+            <button class="btn ${isLive?'btn-live':'btn-primary'}" onclick="navigate('teacher-room',{id:'${doc.id}'})">${isLive?'🔴 Entrar a Clase':'▶️ Iniciar Clase'}</button>
+            ${isAdmin ? `
+              <button class="btn btn-sm btn-secondary" onclick="editClass('${doc.id}')">✏️ Editar</button>
+              <button class="btn btn-sm btn-${isLive?'warning':'success'}" onclick="toggleClassStatus('${doc.id}','${c.status}')">${isLive?'⏹ Finalizar':'▶️ Activar EN VIVO'}</button>
+              <button class="btn btn-sm btn-danger" onclick="deleteClass('${doc.id}')">🗑️</button>` : ''}
+          ` : `<button class="btn ${isLive?'btn-live':'btn-primary'}" onclick="navigate('class-room',{id:'${doc.id}'})">${isLive?'🔴 Entrar a Clase EN VIVO':'👁️ Ver Clase'}</button>`}
+        </div>
+      </div>
+    </div>`;
+}
+function _tarjetaCurso(cursoId, ses, isAdmin, isTeacher) {
+  const hoy = _diaChile(new Date());
+  _cursosCache[cursoId] = ses;
+  const mias = isTeacher ? ses.filter(_esMiClase) : ses;
+  const base = isTeacher ? mias : ses;
+  const activa = base.find(c => c.status === 'active');
+  const sel = activa || base.find(c => c.fecha === hoy) || base.find(c => c.fecha > hoy) || base[base.length - 1];
+  const nombre = ses[0].courseName || ses[0].title;
+  const fechas = ses.map(c => c.fecha).sort();
+  const esHoy = sel.fecha === hoy, live = sel.status === 'active', fin = sel.status === 'finished';
+  const tieneOnline = !sel.soloPresencial;
+  const quien = isTeacher || isAdmin;
+  let accion = '';
+  if (!tieneOnline) accion = `<span class="badge badge-orange">🏫 Jornada 100% presencial${esHoy ? ' hoy' : ''}: sin sala online</span>`;
+  else if (quien) {
+    if (live) accion = `<button class="btn btn-live" onclick="navigate('teacher-room',{id:'${sel.id}'})">🔴 Entrar a la clase</button>`;
+    else if (esHoy || isAdmin) accion = `<button class="btn btn-primary" onclick="navigate('teacher-room',{id:'${sel.id}'})">${fin ? '📖 Ver sesión / Libro' : '▶️ Abrir sala de ' + (esHoy ? 'hoy' : _diaLabel(sel.fecha))}</button>`;
+    else accion = `<span class="badge badge-blue">Tu próxima sesión: ${escHtml(_fechaLarga(sel.fecha))}</span>`;
+  } else {
+    if (esHoy) accion = `<button class="btn ${live?'btn-live':'btn-primary'}" onclick="navigate('class-room',{id:'${sel.id}'})">${live ? '🔴 Entrar a la clase EN VIVO' : '⏳ Ir a la sala de espera'}</button>`;
+    else if (sel.fecha > hoy) accion = `<span class="badge badge-blue">Próxima clase: ${escHtml(_fechaLarga(sel.fecha))}</span>`;
+    else accion = `<span class="badge badge-gray">Curso finalizado</span>`;
+  }
+  const estado = live ? '<span class="badge badge-live">🔴 EN VIVO</span>' : fin ? '<span class="badge badge-gray">✅ Sesión finalizada</span>' : esHoy ? '<span class="badge badge-green">📅 Hoy</span>' : '<span class="badge badge-blue">📅 ' + escHtml(_diaLabel(sel.fecha)) + '</span>';
+  return `
+    <div class="curso-card">
+      <div class="cc-head"><div><h4>🎓 ${escHtml(nombre)}</h4><div style="font-size:12px;color:var(--text-light);margin-top:3px;font-family:'DM Mono',monospace">${escHtml(sel.jitsiRoom || '')}</div></div>${estado}</div>
+      <div class="cc-body">
+        <div class="cc-meta"><span>📅 ${escHtml(fmtDate(fechas[0] + 'T12:00:00'))} → ${escHtml(fmtDate(fechas[fechas.length - 1] + 'T12:00:00'))}</span><span>🗓️ ${ses.length} día${ses.length === 1 ? '' : 's'}</span><span>Sesión mostrada: ${escHtml(_fechaLarga(sel.fecha))}</span></div>
+        ${ramoPanelHtml(sel, true)}
+        <div class="live-class-actions">
+          ${accion}
+          <button class="btn btn-sm btn-secondary" onclick="verHorarioCurso('${cursoId}')">🗓️ Horario del curso</button>
+          ${isAdmin ? `<button class="btn btn-sm btn-secondary" onclick="navigate('carpeta-curso',{name:${escHtml(JSON.stringify(nombre)).replace(/'/g, '&#39;')}})">📁 Carpeta</button><button class="btn btn-sm btn-danger" onclick="eliminarCurso('${cursoId}')">🗑️</button>` : ''}
+        </div>
+      </div>
+    </div>`;
+}
+function verHorarioCurso(cursoId) {
+  const ses = _cursosCache[cursoId] || []; if (!ses.length) return;
+  const isAdmin = currentRole === 'admin', isTeacher = currentRole === 'teacher';
+  openModal(`<h3>🗓️ ${escHtml(ses[0].courseName || '')}</h3>
+    <div style="max-height:62vh;overflow-y:auto;margin-top:10px">
+    ${ses.map(c => { const bl = _bloquesDe(c); const puede = (isAdmin || (isTeacher && _esMiClase(c))) && !c.soloPresencial;
+      return `<div class="imp-dia"><div class="d" style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><span>${escHtml(_fechaLarga(c.fecha))}</span>
+        <span>${c.status === 'active' ? '<span class="badge badge-live">EN VIVO</span>' : c.status === 'finished' ? '<span class="badge badge-gray">Finalizada</span>' : ''}${puede ? ` <button class="btn btn-sm btn-secondary" onclick="closeModal();navigate('teacher-room',{id:'${c.id}'})">Abrir</button>` : ''}</span></div>
+        ${bl.map(b => `<div class="imp-bl"><span class="h">${_rangoB(b)}</span><span style="flex:1;min-width:180px"><strong>${escHtml(b.ramo)}</strong> · ${escHtml(b.relator || '')}</span><span class="badge ${b.modalidad === 'online' ? 'badge-blue' : 'badge-orange'}">${_modBadge(b)}</span></div>`).join('')}</div>`; }).join('')}
+    </div><div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cerrar</button></div>`, true);
+}
+async function eliminarCurso(cursoId) {
+  const ses = _cursosCache[cursoId] || [];
+  if (ses.some(c => c.status !== 'scheduled')) return toast('⚠️ Este curso ya tiene clases iniciadas: sus registros se conservan. Archívalo en lugar de eliminarlo.', 'warning', 7000);
+  if (!confirm('¿Eliminar este curso y sus ' + ses.length + ' sesiones programadas? (Ninguna ha comenzado.)')) return;
+  try {
+    const b = db.batch(); ses.forEach(c => b.delete(db.collection('liveClasses').doc(c.id))); b.delete(db.collection('cursos').doc(cursoId)); await b.commit();
+    toast('🗑️ Curso eliminado.', 'success'); navigate('live-classes');
+  } catch (e) { toast('❌ ' + e.message, 'error'); }
+}
 async function renderLiveClasses(mc) {
   const isAdmin   = currentRole==='admin';
   const isTeacher = currentRole==='teacher';
-
   mc.innerHTML = `
     <div class="page-header">
-      <div><h2>📹 Clases en Vivo</h2><div class="breadcrumb">Clases disponibles</div></div>
-      ${isAdmin ? '<button class="btn btn-primary" onclick="navigate(\'new-class\')">➕ Nueva Clase</button>' : ''}
+      <div><h2>📹 Clases en Vivo</h2><div class="breadcrumb">${isAdmin ? 'Cursos y clases' : 'Tu acceso a clases'}</div></div>
+      ${isAdmin ? '<button class="btn btn-primary" onclick="navigate(\'nuevo-curso\')">📥 Nuevo Curso (Excel)</button>' : ''}
     </div>
     <div id="classesContainer"><div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div></div>`;
-
   try {
     const snap = await db.collection('liveClasses').get();
-
     const cont = document.getElementById('classesContainer');
-    if (snap.empty) { cont.innerHTML='<div class="empty-state"><div class="icon">📭</div><p>No hay clases disponibles.</p></div>'; return; }
-
-    const sortedDocs = snap.docs.sort((a,b) => {
-      const ta = a.data().scheduledAt?.toDate?.()?.getTime() || 0;
-      const tb = b.data().scheduledAt?.toDate?.()?.getTime() || 0;
-      return tb - ta;
+    let matricula = [];
+    if (!isAdmin && !isTeacher) { try { const u = await db.collection('users').doc(currentUser.uid).get(); matricula = (u.exists && Array.isArray(u.data().cursos)) ? u.data().cursos : []; } catch (e) {} }
+    const grupos = {}, sueltas = [];
+    snap.docs.forEach(d => {
+      const c = { id: d.id, ...d.data() };
+      if (c.cursoId) { if (!isAdmin && !isTeacher && matricula.length && !matricula.includes(c.courseName)) return; (grupos[c.cursoId] = grupos[c.cursoId] || []).push(c); }
+      else sueltas.push(d);
     });
-
-    cont.innerHTML = sortedDocs.map(doc => {
-      const c = doc.data();
-      const isLive = c.status==='active';
-      const isDone = c.status==='finished';
-      return `
-        <div class="live-class-card">
-          <div class="live-class-header">
-            <h4>${escHtml(c.title)}</h4>
-            <span class="badge ${isLive?'badge-live':isDone?'badge-gray':'badge-blue'}">
-              ${isLive?'🔴 EN VIVO':isDone?'✅ Finalizada':'📅 Programada'}
-            </span>
-          </div>
-          <div class="live-class-body">
-            <div class="live-class-meta">
-              <span>📅 ${fmtDateTime(c.scheduledAt)}</span>
-              <span>⏱ ${c.duration||60} min</span>
-              ${c.courseName ? `<span>🎓 ${escHtml(c.courseName)}</span>` : ''}
-              ${c.teacherName ? `<span>👨‍🏫 ${escHtml(c.teacherName)}</span>` : ''}
-            </div>
-            ${c.description ? `<p style="font-size:13px;color:var(--text-mid);margin-bottom:12px">${escHtml(c.description)}</p>` : ''}
-            <div class="live-class-actions">
-              ${isTeacher||isAdmin ? `
-                <button class="btn ${isLive?'btn-live':'btn-primary'}" onclick="navigate('teacher-room',{id:'${doc.id}'})">
-                  ${isLive?'🔴 Entrar a Clase':'▶️ Iniciar Clase'}
-                </button>
-                ${isAdmin ? `
-                  <button class="btn btn-sm btn-secondary" onclick="editClass('${doc.id}')">✏️ Editar</button>
-                  <button class="btn btn-sm btn-${isLive?'warning':'success'}" onclick="toggleClassStatus('${doc.id}','${c.status}')">
-                    ${isLive?'⏹ Finalizar':'▶️ Activar EN VIVO'}
-                  </button>
-                  <button class="btn btn-sm btn-danger" onclick="deleteClass('${doc.id}')">🗑️</button>
-                ` : ''}
-              ` : `
-                <button class="btn ${isLive?'btn-live':'btn-primary'}" onclick="navigate('class-room',{id:'${doc.id}'})">
-                  ${isLive?'🔴 Entrar a Clase EN VIVO':'👁️ Ver Clase'}
-                </button>
-              `}
-            </div>
-          </div>
-        </div>`;
-    }).join('');
+    _cursosCache = {};
+    const cursos = Object.entries(grupos).map(([id, L]) => [id, L.sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''))])
+      .filter(([, L]) => !isTeacher || L.some(_esMiClase))
+      .sort((a, b) => (b[1][b[1].length - 1].fecha || '').localeCompare(a[1][a[1].length - 1].fecha || ''));
+    const sortedDocs = sueltas.sort((a,b) => (b.data().scheduledAt?.toDate?.()?.getTime() || 0) - (a.data().scheduledAt?.toDate?.()?.getTime() || 0));
+    if (!cursos.length && !sortedDocs.length) { cont.innerHTML='<div class="empty-state"><div class="icon">📭</div><p>No hay clases disponibles.</p></div>'; return; }
+    cont.innerHTML = cursos.map(([id, L]) => _tarjetaCurso(id, L, isAdmin, isTeacher)).join('')
+      + (sortedDocs.length && cursos.length ? '<div class="carp-mes">Clases sueltas</div>' : '')
+      + sortedDocs.map(d => _tarjetaClaseSuelta(d, isAdmin, isTeacher)).join('');
   } catch(e) {
     document.getElementById('classesContainer').innerHTML = `<div class="empty-state"><div class="icon">❌</div><p>${escHtml(e.message)}</p></div>`;
   }
@@ -1710,6 +2206,7 @@ async function renderClassRoom(mc, params={}) {
       </div>
       ${(cls.teacherName || cls.profesorNombre) ? `<span class="badge badge-blue" style="margin-right:8px">👨‍🏫 ${escHtml(cls.teacherName || cls.profesorNombre)}</span>` : ''}${activa ? '<span class="badge badge-live">🔴 EN VIVO</span>' : finalizada ? '<span class="badge badge-gray">✅ Finalizada</span>' : '<span class="badge badge-blue">📅 Programada</span>'}
     </div>
+    <div id="ramoPanel">${ramoPanelHtml(cls)}</div>
     ${cajaAsistencia}
     ${esFisc ? '' : '<div id="listaBanner"></div>'}
     <div class="sala-layout">
@@ -1727,9 +2224,10 @@ async function renderClassRoom(mc, params={}) {
     <div style="margin-top:8px"><button class="btn btn-secondary" onclick="salirSalaAlumno('${classId}')">🚪 ${esFisc ? 'Salir de la observación' : 'Salir de la Clase'}</button></div>`;
 
   initClassChat(classId, !esFisc);
-  if (salaOk && activa) montarVideoJitsi('jitsiHost', classId, { teacherName: cls.teacherName || cls.profesorNombre, titulo: cls.title });
+  if (salaOk && activa) montarVideoJitsi('jitsiHost', classId, { teacherName: _nombresRelatores(cls, (_ramoAhora(cls) || {}).actual), titulo: _asuntoSala(cls) });
   if (activa && !esFisc) escucharLista(classId);
   escucharEstadoClase(classId, cls.status);
+  iniciarRamoTicker(cls);
 }
 
 async function salirSalaAlumno(classId) {
@@ -1761,7 +2259,7 @@ async function iniciarClase(classId) {
   }
 }
 async function cerrarClaseDocente(classId) {
-  if (!confirm('¿Finalizar la clase para todos?\n\nLos alumnos serán notificados y los minutos de asistencia quedarán acotados a esta hora oficial de cierre.\nSi solo necesitas salir un momento, usa "Salir de la Sala": la clase sigue abierta.')) return;
+  if (!confirm('¿Finalizar la clase para todos?\n\nSi hay otro relator después de ti, NO la finalices: solo usa "Salir de la Sala". Finaliza solo si eres el último relator del día.\n\nLos alumnos serán notificados y los minutos de asistencia quedarán acotados a esta hora oficial de cierre.\nSi solo necesitas salir un momento, usa "Salir de la Sala": la clase sigue abierta.')) return;
   try {
     const res = await workerFetch('/api/bloque/cerrar', { method: 'POST', body: JSON.stringify({ classId }) });
     const j = await res.json().catch(() => ({}));
@@ -1778,6 +2276,7 @@ async function renderTeacherRoom(mc, params={}) {
   if (!doc.exists) { mc.innerHTML='<div class="empty-state"><div class="icon">❌</div><p>Clase no encontrada.</p></div>'; return; }
   const cls = doc.data();
   const durMin = cls.duration || 60;
+  const otroDia = currentRole === 'teacher' && !!cls.fecha && cls.fecha !== _diaChile(new Date());
   const isActive = cls.status === 'active';
   const isFinished = cls.status === 'finished';
   const salaOk = cls.videoType === 'jitsi' && SALA_RE.test(String(cls.jitsiRoom || ''));
@@ -1820,12 +2319,15 @@ async function renderTeacherRoom(mc, params={}) {
       ${isActive ? '<span class="badge badge-live">🔴 EN VIVO</span>' : isFinished ? '<span class="badge badge-gray">✅ Finalizada</span>' : '<span class="badge badge-gray">📅 No activa</span>'}
     </div>
 
+    <div id="ramoPanel">${ramoPanelHtml(cls)}</div>
     ${!isActive && !isFinished ? `
     <div style="background:linear-gradient(135deg,#1a2e1e,#2a5536);border-radius:var(--radius-lg);padding:28px 24px;margin-bottom:18px;text-align:center;border:2px dashed rgba(255,255,255,0.15)">
       <div style="font-size:40px;margin-bottom:12px">🎬</div>
       <h3 style="color:#fff;font-size:18px;font-weight:700;margin-bottom:8px">La clase aún no ha comenzado</h3>
       <p style="color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:20px">Al iniciar, los alumnos podrán entrar a la sala y se registrará tu asistencia. La hora oficial la fija el servidor.</p>
-      <button id="btnIniciarClase" class="btn btn-success" style="padding:14px 32px;font-size:15px;border-radius:10px" ${salaOk ? '' : 'disabled'} onclick="iniciarClase('${classId}')">▶️ Iniciar Clase</button>
+      <button id="btnIniciarClase" class="btn btn-success" style="padding:14px 32px;font-size:15px;border-radius:10px" ${salaOk && !otroDia ? '' : 'disabled'} onclick="iniciarClase('${classId}')">▶️ Iniciar Clase</button>
+      ${otroDia ? `<p style="color:#ffd89a;font-size:13px;margin-top:12px">Esta sesión corresponde al ${escHtml(_fechaLarga(cls.fecha))}. Solo puedes iniciarla ese día.</p>` : ''}
+      ${(cls.soloPresencial) ? '<p style="color:#ffd89a;font-size:13px;margin-top:12px">Esta jornada es 100% presencial: no hay sala online.</p>' : ''}
     </div>` : ''}
     ${isFinished ? `<div class="card" style="border-color:var(--warning);margin-bottom:16px"><strong>⏹ Clase finalizada.</strong>${cls.bloqueCerradoAt ? ' Cierre oficial: ' + fmtDateTime(cls.bloqueCerradoAt) + '.' : ''} Solo un administrador puede reabrirla. Aún puedes firmar el Libro de Clases.</div>` : ''}
 
@@ -1893,9 +2395,10 @@ async function renderTeacherRoom(mc, params={}) {
   initClassChat(classId, true);
   cargarEstadoLibroClase(classId);
   if (salaOk && isActive) {
-    montarVideoJitsi('jitsiHost', classId, { teacherName: cls.teacherName || cls.profesorNombre, titulo: cls.title });
+    montarVideoJitsi('jitsiHost', classId, { teacherName: _nombresRelatores(cls, (_ramoAhora(cls) || {}).actual), titulo: _asuntoSala(cls) });
     escucharLista(classId);
   }
+  iniciarRamoTicker(cls);
 }
 
 function recargarAlumnosRT(classId) {
@@ -4482,11 +4985,14 @@ const _diaLabel = (ds) => new Date(ds + 'T12:00:00').toLocaleDateString('es-CL',
 const _esAsistAlumno = (a) => !a.userRole || a.userRole === 'student';   // el rol se guarda en cada registro al momento de entrar
 const _esMiClase = (c) => (Array.isArray(c.profesoresUids) && c.profesoresUids.includes(currentUser.uid)) || c.profesorUid === currentUser.uid || c.teacherUid === currentUser.uid;
 function _minOficial(c) {
+  const on = _bloquesDe(c).filter(b => b.modalidad === 'online');
+  if (on.length) { const t = on.reduce((a, b) => a + _minBloqueOficial(c, b), 0); return Math.max(1, t); }
   const i = _toD(c.bloqueIniciadoAt); let f = _toD(c.bloqueCerradoAt);
   if (i && !f && c.status === 'active') f = new Date();
   if (i && f) return Math.max(1, Math.round((f - i) / 60000));
   return Number(c.duration) || 60;
 }
+
 const _nombreCursoDe = (c) => ((c.courseName || '').trim() || SIN_CURSO);
 
 async function renderCarpetas(mc) {
@@ -4601,7 +5107,23 @@ async function cargarCurso(name) {
     al.pct = dias.length ? Math.round(al.P / dias.length * 100) : 0;
     al.pctMin = totalOficial ? Math.min(100, Math.round(al.minTotal / totalOficial * 100)) : 0;
   });
-  return { nombre: name, clases, iniciadas, dias, alumnos, docentes: Object.values(docentes), todos, totalOficial };
+  // Minutos por ramo (solo bloques online; el desglose lo guarda el Worker en cada asistencia)
+  const rm = {};
+  clases.forEach(c => _bloquesDe(c).forEach(b => {
+    const x = (rm[b.ramo] = rm[b.ramo] || { nombre: b.ramo, planOn: 0, planPres: 0, oficial: 0, relatores: [] });
+    const dur = Math.round((b.fin - b.ini) / 60000);
+    if (b.modalidad === 'online') { x.planOn += dur; if (iniciadas.includes(c)) x.oficial += _minBloqueOficial(c, b); } else x.planPres += dur;
+    if (b.relator && !x.relatores.includes(b.relator)) x.relatores.push(b.relator);
+  }));
+  const ramos = Object.values(rm);
+  const pr = {};
+  att.filter(_esAsistAlumno).forEach(a => {
+    const c = porId[a.classId]; if (!c || !a.minPorBloque) return;
+    const bl = _bloquesDe(c);
+    Object.entries(a.minPorBloque).forEach(([k, v]) => { const b = bl.find(z => 'b' + z.i === k); if (!b) return; const q = (pr[a.userId] = pr[a.userId] || {}); q[b.ramo] = (q[b.ramo] || 0) + (Number(v) || 0); });
+  });
+  alumnos.forEach(al => { al.porRamo = pr[al.uid] || {}; });
+  return { nombre: name, clases, iniciadas, dias, alumnos, docentes: Object.values(docentes), todos, totalOficial, ramos };
 }
 
 async function renderCarpetaCurso(mc, params = {}) {
@@ -4627,6 +5149,7 @@ async function renderCarpetaCurso(mc, params = {}) {
       <div class="cp-tabs">
         <button class="cp-tab active" data-t="matriz" onclick="cursoTab('matriz')">📊 Matriz por día</button>
         <button class="cp-tab" data-t="dia" onclick="cursoTab('dia')">📅 Detalle de un día</button>
+        ${c.ramos.length ? '<button class="cp-tab" data-t="ramos" onclick="cursoTab(\'ramos\')">📚 Por ramo</button>' : ''}
         <button class="cp-tab" data-t="alumnos" onclick="cursoTab('alumnos')">🎓 Alumnos del curso</button>
       </div>
       <div id="cursoCont"></div>`;
@@ -4669,6 +5192,16 @@ function pintarCurso() {
         <td style="font-family:'DM Mono';font-size:12px">${x.entrada ? _hm(x.entrada) : '—'}</td><td style="font-family:'DM Mono';font-size:12px">${x.salida ? _hm(x.salida) : '—'}</td>
         <td style="text-align:center">${x.min || '—'}</td><td style="text-align:center">${x.estado === 'A' ? '—' : x.pct + '%'}</td></tr>`; }).join('')}
       </tbody></table></div></div>`;
+  } else if (_cursoTab === 'ramos') {
+    const h = (m) => (Math.round(m / 60 * 10) / 10) + ' h';
+    cont.innerHTML = `<div class="card"><div class="card-header"><h3>📚 Ramos del curso</h3></div>
+      <div class="table-wrap"><table><thead><tr><th>Ramo</th><th>Relator(es)</th><th>Online planificado</th><th>Online dictado</th><th>Presencial (fuera de la plataforma)</th></tr></thead><tbody>
+      ${c.ramos.map(r => `<tr><td><strong>${escHtml(r.nombre)}</strong></td><td>${r.relatores.map(escHtml).join(', ') || '—'}</td><td style="text-align:center">${r.planOn ? r.planOn + ' min (' + h(r.planOn) + ')' : '—'}</td><td style="text-align:center">${r.oficial ? r.oficial + ' min' : '—'}</td><td style="text-align:center">${r.planPres ? r.planPres + ' min (' + h(r.planPres) + ')' : '—'}</td></tr>`).join('')}
+      </tbody></table></div></div>
+      ${c.alumnos.length ? `<div class="card"><div class="card-header"><h3>🎓 Minutos conectados por ramo (solo bloques online)</h3></div>
+      <div class="mx-wrap"><table class="mx"><thead><tr><th class="stk">Alumno</th>${c.ramos.filter(r => r.planOn).map(r => `<th title="${escHtml(r.nombre)}">${escHtml(r.nombre.length > 22 ? r.nombre.slice(0, 21) + '…' : r.nombre)}</th>`).join('')}</tr></thead><tbody>
+      ${c.alumnos.map((a, i) => `<tr><td class="stk"><strong>${i + 1}. ${escHtml(a.nombre)}</strong></td>${c.ramos.filter(r => r.planOn).map(r => { const m = a.porRamo[r.nombre] || 0; const p = r.oficial ? Math.min(100, Math.round(m / r.oficial * 100)) : 0; return `<td class="${!r.oficial ? '' : p >= UMBRAL_ASIST ? 'ok' : m ? 'par' : 'aus'}">${r.oficial ? m + ' min<small>' + p + '%</small>' : '—'}</td>`; }).join('')}</tr>`).join('')}
+      </tbody></table></div></div>` : ''}`;
   } else {
     const admin = currentRole === 'admin';
     cont.innerHTML = `<div class="card">
@@ -4757,6 +5290,15 @@ function exportarCurso() {
   const wsMin = XLSX.utils.aoa_to_sheet(mm); ancho(wsMin, [6, 36, 14, ...c.dias.map(() => 12), 11]);
   XLSX.utils.book_append_sheet(wb, wsMin, 'Minutos');
 
+  if (c.ramos.length) {
+    const on = c.ramos.filter(r => r.planOn);
+    const rr = [['Ramo', 'Relator(es)', 'Online planificado (min)', 'Online dictado (min)', 'Presencial fuera de plataforma (min)']];
+    c.ramos.forEach(r => rr.push([r.nombre, r.relatores.join(', '), r.planOn, r.oficial, r.planPres]));
+    rr.push([], ['N°', 'Alumno', 'RUT', ...on.map(r => r.nombre + ' (min)')]);
+    c.alumnos.forEach((a, i) => rr.push([i + 1, a.nombre, a.rut, ...on.map(r => a.porRamo[r.nombre] || 0)]));
+    const wsRamo = XLSX.utils.aoa_to_sheet(rr); ancho(wsRamo, [38, 34, 20, 20, 28, ...on.map(() => 22)]);
+    XLSX.utils.book_append_sheet(wb, wsRamo, 'Por ramo');
+  }
   c.dias.forEach((d, di) => {
     const docs = c.docentes.filter(x => x.dia === d.fecha);
     const rows = [[`${c.nombre} — ${d.fecha}`], ['Bloques', d.clases.map(x => x.title || '').join(' / ')], ['Minutos oficiales', d.oficial]];
@@ -4777,9 +5319,11 @@ function exportarCurso() {
 ════════════════════════════════════════════════ */
 let _libroAlTerminar = null;
 async function _libroDeClase(classId) {
-  const sn = await db.collection('libroClases').where('classId','==',classId).limit(1).get();
-  return sn.empty ? null : { id: sn.docs[0].id, ...sn.docs[0].data() };
+  const sn = await db.collection('libroClases').where('classId','==',classId).get();
+  const docs = sn.docs.map(d => ({ id: d.id, ...d.data() }));
+  return docs.find(d => d.autorUid === currentUser.uid) || docs.find(d => !d.autorUid) || null;   // un registro por relator; los antiguos no tenían autor
 }
+
 async function _libroFirmado(classId) {
   try { const l = await _libroDeClase(classId); return !!(l && l.firmaDocente && l.firmaDocente.firmado); } catch (e) { return true; }   // si no se puede consultar, no se bloquea la salida
 }
@@ -4795,7 +5339,8 @@ async function guardarFirmaLibro(classId, materia) {
     const asistentes = attSnap.docs.filter(d => { const a = d.data(); return a.present && a.userRole === 'student'; }).length;
     const ahora = firebase.firestore.Timestamp.now();
     const payload = {
-      classId, curso: cls.courseName || '', titulo: cls.title || '', fecha: cls.scheduledAt || ahora, modalidad: 'online',
+      classId, cursoId: cls.cursoId || '', autorUid: currentUser.uid, ramos: _ramosDeDocente(cls, currentUser.uid),
+      curso: cls.courseName || '', titulo: (cls.title || '') + (_ramosDeDocente(cls, currentUser.uid).length ? ' — ' + _ramosDeDocente(cls, currentUser.uid).join(' / ') : ''), fecha: cls.scheduledAt || ahora, modalidad: 'online',
       horaInicio: cls.bloqueIniciadoAt || null, horaCierre: cls.bloqueCerradoAt || ahora,
       materiaTratada: materia, asistentesCount: asistentes,
       firmaDocente: { firmado: true, uid: currentUser.uid, nombre: currentUser.displayName || currentUser.email, fecha: ahora },
@@ -4816,6 +5361,7 @@ async function pedirFirmaLibro(classId, alTerminar) {
   openModal(`
     <h3>📖 Libro de Clases — firma de salida</h3>
     <p style="font-size:13px;color:var(--text-mid);line-height:1.6;margin:6px 0 14px">Antes de salir, registra los contenidos de <strong>${escHtml(cls.title || 'la clase')}</strong>${cls.courseName ? ' (' + escHtml(cls.courseName) + ')' : ''} y firma tu salida. Queda con tu nombre y la hora exacta de la firma, y OS10 puede revisarlo.</p>
+    ${_ramosDeDocente(cls, currentUser.uid).length ? `<div style="font-size:12.5px;background:var(--green-50);border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-bottom:12px">📚 Ramo(s) del día: <strong>${_ramosDeDocente(cls, currentUser.uid).map(escHtml).join(' / ')}</strong></div>` : ''}
     <div class="form-group"><label>Contenidos / materia tratada *</label><textarea id="fm_materia" rows="5" placeholder="Ej: Marco legal Ley N° 21.659, funciones del guardia OS10...">${escHtml(prev?.materiaTratada || '')}</textarea></div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="omitirFirmaLibro()">Firmar después</button>
