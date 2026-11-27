@@ -1330,7 +1330,13 @@ async function crearCursoDesdeExcel() {
     msg('⏳ Comprobando...');
     const ex = await db.collection('cursos').where('name', '==', nombre).limit(1).get();
     const ex2 = await db.collection('cursos').where('jitsiRoom', '==', sala).limit(1).get();
-    if (!ex.empty || !ex2.empty) { toast('⚠️ Ya existe un curso con ese nombre. Cámbialo (por ejemplo, agrega la fecha o un número).', 'warning', 7000); if (btn) { btn.disabled = false; btn.textContent = '✅ Crear curso'; } return; }
+    // Un registro de curso SIN clases (huérfano, p. ej. sus clases se borraron) no cuenta como curso existente: se limpia
+    let hayReal = false;
+    for (const d of [...ex.docs, ...ex2.docs]) {
+      const cl = await db.collection('liveClasses').where('cursoId', '==', d.id).limit(1).get();
+      if (!cl.empty) hayReal = true; else { try { await d.ref.delete(); } catch (e) { hayReal = true; } }
+    }
+    if (hayReal) { toast('⚠️ Ya existe un curso con ese nombre. Cámbialo (por ejemplo, agrega la fecha o un número).', 'warning', 7000); if (btn) { btn.disabled = false; btn.textContent = '✅ Crear curso'; } return; }
 
     // 1) Cuentas de relatores
     msg('⏳ Preparando relatores...');
@@ -3368,7 +3374,7 @@ let _cursosMat = [];
 async function _cargarCursosMat() {
   const nombres = new Map();
   try { (await db.collection('liveClasses').get()).docs.forEach(d => { const n = (d.data().courseName || '').trim(); if (n && !nombres.has(n)) nombres.set(n, false); }); } catch (e) {}
-  try { (await db.collection('cursos').get()).docs.forEach(d => { const c = d.data(); if (c.name) nombres.set(c.name, c.estado === 'cerrado'); }); } catch (e) {}
+  try { (await db.collection('cursos').get()).docs.forEach(d => { const c = d.data(); if (c.name && nombres.has(c.name)) nombres.set(c.name, c.estado === 'cerrado'); }); } catch (e) {}   // un curso sin clases no se ofrece
   _cursosMat = [...nombres.entries()].map(([name, cerrado]) => ({ name, cerrado })).sort((a, b) => a.name.localeCompare(b.name, 'es'));
   return _cursosMat;
 }
