@@ -3336,6 +3336,10 @@ María González	9876543-2
 Carlos Rodríguez	15234567-K" style="font-family:'DM Mono',monospace;font-size:13px"></textarea>
         <small>Copia desde Excel (Ctrl+C) y pega aquí (Ctrl+V).</small>
       </div>
+      <div class="form-group">
+        <label>Matricular a todos en curso(s) <small style="font-weight:400">(opcional; si el alumno ya existe, solo se le matricula)</small></label>
+        <div id="bulkCursos"><p style="font-size:12.5px;color:var(--text-mid)">Cargando cursos...</p></div>
+      </div>
       <div id="bulkPreview" style="margin-bottom:12px"></div>
       <div class="flex gap-2">
         <button class="btn btn-secondary" onclick="previewBulk()">👁️ Previsualizar</button>
@@ -3355,7 +3359,49 @@ Carlos Rodríguez	15234567-K" style="font-family:'DM Mono',monospace;font-size:1
       <div id="alumnosList"><div class="empty-state"><div class="icon">⏳</div><p>Cargando...</p></div></div>
     </div>`;
 
+  _cargarCursosMat().then(() => { const b = document.getElementById('bulkCursos'); if (b) b.innerHTML = _checksCursosHtml('bkcur'); });
   cargarListaAlumnos();
+}
+
+/* ── Matrícula desde Gestión de Alumnos: cursos disponibles (sueltos, en marcha, programados; los cerrados no se ofrecen) ── */
+let _cursosMat = [];
+async function _cargarCursosMat() {
+  const nombres = new Map();
+  try { (await db.collection('liveClasses').get()).docs.forEach(d => { const n = (d.data().courseName || '').trim(); if (n && !nombres.has(n)) nombres.set(n, false); }); } catch (e) {}
+  try { (await db.collection('cursos').get()).docs.forEach(d => { const c = d.data(); if (c.name) nombres.set(c.name, c.estado === 'cerrado'); }); } catch (e) {}
+  _cursosMat = [...nombres.entries()].map(([name, cerrado]) => ({ name, cerrado })).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  return _cursosMat;
+}
+function _checksCursosHtml(idPref, marcados = []) {
+  const m = new Set(marcados);
+  const vis = _cursosMat.filter(c => !c.cerrado || m.has(c.name));
+  if (!vis.length) return '<p style="font-size:12.5px;color:var(--text-mid)">Aún no hay cursos creados.</p>';
+  return `<div id="${idPref}" style="max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:6px 10px">${vis.map(c => `
+    <label style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:13px;cursor:pointer"><input type="checkbox" class="${idPref}-chk" value="${escHtml(c.name)}" ${m.has(c.name) ? 'checked' : ''}> <span>${escHtml(c.name)}${c.cerrado ? ' <span class="badge badge-gray" style="font-size:10px">cerrado</span>' : ''}</span></label>`).join('')}</div>`;
+}
+const _cursosMarcados = (idPref) => [...document.querySelectorAll('.' + idPref + '-chk:checked')].map(x => x.value);
+
+async function matricularAlumnoModal(uid) {
+  await _cargarCursosMat();
+  let u = {}; try { u = (await db.collection('users').doc(uid).get()).data() || {}; } catch (e) { return toast('❌ ' + e.message, 'error'); }
+  const act = Array.isArray(u.cursos) ? u.cursos : [];
+  window._matUid = uid; window._matActual = act;
+  openModal(`
+    <h3>🎓 Matricular a ${escHtml(u.name || 'alumno')}</h3>
+    <p style="font-size:13px;color:var(--text-mid);margin-bottom:10px">Marca los cursos en que está matriculado. Al desmarcar uno, deja de verlo.</p>
+    ${_checksCursosHtml('mtal', act)}
+    <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="guardarMatriculaAlumno()">✅ Guardar</button></div>`);
+}
+async function guardarMatriculaAlumno() {
+  const nuevos = _cursosMarcados('mtal'), antes = window._matActual || [], uid = window._matUid;
+  const altas = nuevos.filter(n => !antes.includes(n)), bajas = antes.filter(n => !nuevos.includes(n) && _cursosMat.some(c => c.name === n));
+  if (!altas.length && !bajas.length) return closeModal();
+  try {
+    const fv = firebase.firestore.FieldValue, ref = db.collection('users').doc(uid);
+    if (altas.length) await ref.update({ cursos: fv.arrayUnion(...altas), cursosRetirados: fv.arrayRemove(...altas) });
+    if (bajas.length) await ref.update({ cursos: fv.arrayRemove(...bajas) });
+    closeModal(); toast(`✅ Matrícula actualizada (+${altas.length} / −${bajas.length}).`, 'success'); cargarListaAlumnos();
+  } catch (e) { toast('❌ ' + e.message, 'error'); }
 }
 
 async function cargarListaAlumnos() {
@@ -3368,7 +3414,7 @@ async function cargarListaAlumnos() {
     cont.innerHTML = `
       <div style="margin-bottom:10px;font-size:13px;color:var(--text-light)">Total: <strong>${docs.length} alumno${docs.length!==1?'s':''}</strong></div>
       <div class="table-wrap"><table>
-        <thead><tr><th>Nombre</th><th>RUT</th><th>Contraseña Inicial</th><th>Acciones</th></tr></thead>
+        <thead><tr><th>Nombre</th><th>RUT</th><th>Cursos</th><th>Contraseña Inicial</th><th>Acciones</th></tr></thead>
         <tbody>${docs.map(d=>{
           const u=d.data();
           return `<tr>
@@ -3377,7 +3423,9 @@ async function cargarListaAlumnos() {
               <strong>${escHtml(u.name||'—')}</strong>
             </div></td>
             <td><span style="font-family:'DM Mono';font-size:13px">${escHtml(u.rut||'—')}</span></td>
+            <td>${(Array.isArray(u.cursos) && u.cursos.length) ? u.cursos.map(c => `<span class="badge badge-green" style="font-size:10.5px;margin:1px 2px 1px 0">${escHtml(c)}</span>`).join('') : '<span style="font-size:12px;color:var(--text-light)">Sin curso</span>'}</td>
             <td><span class="badge badge-orange" style="font-family:'DM Mono';cursor:pointer" title="Clic para revelar" onclick="this.textContent=this.textContent==='••••••'?'${escHtml(rutToPassword(u.rut||''))}':'••••••'">••••••</span></td>
+            <td style="white-space:nowrap"><button class="btn btn-sm btn-primary" onclick="matricularAlumnoModal('${d.id}')">🎓 Matricular</button> <button class="btn btn-sm btn-secondary" title="Eliminar alumno" onclick="eliminarAlumno('${d.id}','${escHtml((u.name||'').replace(/'/g,''))}')">🗑️</button></td>
           </tr>`;}).join('')}
         </tbody></table></div>`;
   } catch(e) {
@@ -3445,7 +3493,9 @@ async function crearAlumnosMasivo() {
   const bar  = document.getElementById('bulkBar');
   const stat = document.getElementById('bulkStatus');
   btn.disabled=true; prog.style.display='block';
-  let ok=0,skip=0,err=0;
+  let ok=0,skip=0,err=0,mat=0;
+  const cursosSel = _cursosMarcados('bkcur');
+  const fv = firebase.firestore.FieldValue;
   for (let i=0;i<_bulkAlumnos.length;i++) {
     const a = _bulkAlumnos[i];
     const pct = Math.round(((i+1)/_bulkAlumnos.length)*100);
@@ -3453,27 +3503,33 @@ async function crearAlumnosMasivo() {
     stat.textContent=`Procesando ${i+1}/${_bulkAlumnos.length}: ${a.nombre}`;
     try {
       const existing = await db.collection('users').where('rut','==',a.rut).limit(1).get();
-      if (!existing.empty) { skip++; continue; }
+      if (!existing.empty) {
+        skip++;
+        if (cursosSel.length && existing.docs[0].data().role === 'student') { await existing.docs[0].ref.update({ cursos: fv.arrayUnion(...cursosSel), cursosRetirados: fv.arrayRemove(...cursosSel) }); mat++; }
+        continue;
+      }
       const email = rutToEmail(a.rut);
       const pass  = rutToPassword(a.rut);
       const cred  = await _obtenerCuentaAuth(email, pass, a.nombre);
       await db.collection('users').doc(cred.uid).set({
         uid:cred.uid, email, name:a.nombre, rut:a.rut,
-        role:'student', createdAt:firebase.firestore.FieldValue.serverTimestamp()
+        role:'student', createdAt:firebase.firestore.FieldValue.serverTimestamp(),
+        ...(cursosSel.length ? { cursos: cursosSel } : {})
       });
       await secondaryAuth.signOut();
-      ok++;
+      ok++; if (cursosSel.length) mat++;
     } catch(e) { err++; }
   }
   prog.style.display='none'; btn.disabled=false;
-  toast(`✅ Creados: ${ok} | Omitidos (ya existen): ${skip} | Errores: ${err}`,'success',7000);
+  toast(`✅ Creados: ${ok} | Ya existían: ${skip} | Errores: ${err}${cursosSel.length ? ' | Matriculados: ' + mat : ''}`,'success',9000);
   document.getElementById('bulkTable').value='';
   document.getElementById('bulkPreview').innerHTML='';
   _bulkAlumnos=[];
   cargarListaAlumnos();
 }
 
-function showAgregarAlumno() {
+async function showAgregarAlumno() {
+  await _cargarCursosMat();
   openModal(`
     <h3>➕ Agregar Alumno</h3>
     <div class="form-group">
@@ -3484,6 +3540,10 @@ function showAgregarAlumno() {
       <label>RUT (sin puntos, con guión) *</label>
       <input type="text" id="aa_rut" placeholder="Ej: 12345678-9" maxlength="12" style="font-family:'DM Mono';font-size:15px" oninput="formatRutInput(this)">
       <small>Contraseña inicial = últimos 6 dígitos del RUT.</small>
+    </div>
+    <div class="form-group">
+      <label>Matricular en curso(s) <small style="font-weight:400">(opcional; también puedes hacerlo después)</small></label>
+      ${_checksCursosHtml('aacur')}
     </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
@@ -3523,16 +3583,23 @@ async function crearAlumno() {
   if (!validarRut(rut)) return toast('⚠️ RUT inválido.','warning');
   const email = rutToEmail(rut);
   const pass  = rutToPassword(rut);
+  const cursosSel = _cursosMarcados('aacur');
   try {
     const ex = await db.collection('users').where('rut','==',rut).limit(1).get();
     if (!ex.empty) {
       const x = ex.docs[0].data();
+      if (x.role === 'student' && cursosSel.length) {   // ya existe: solo se le matricula en los cursos marcados
+        await ex.docs[0].ref.update({ cursos: firebase.firestore.FieldValue.arrayUnion(...cursosSel), cursosRetirados: firebase.firestore.FieldValue.arrayRemove(...cursosSel) });
+        closeModal(); cargarListaAlumnos();
+        return toast(`✅ ${x.name || 'El alumno'} ya existía: quedó matriculado en ${cursosSel.length} curso(s).`,'success',7000);
+      }
       return toast(`⚠️ Este RUT ya está registrado como ${x.name || '—'} (${x.role || 'sin rol'}). Búscalo en la lista de ${x.role === 'teacher' ? 'Profesores' : 'Alumnos'}.`,'warning',9000);
     }
     const u = await _obtenerCuentaAuth(email, pass, nombre);
     await db.collection('users').doc(u.uid).set({
       uid:u.uid, email, name:nombre, rut,
-      role:'student', createdAt:firebase.firestore.FieldValue.serverTimestamp()
+      role:'student', createdAt:firebase.firestore.FieldValue.serverTimestamp(),
+      ...(cursosSel.length ? { cursos: cursosSel } : {})
     });
     await secondaryAuth.signOut();
     closeModal();
